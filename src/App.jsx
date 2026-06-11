@@ -42,9 +42,15 @@ const AppLogo = ({ className = "w-10 h-10" }) => (
 
 export default function App() {
   const [isLeafletLoaded, setIsLeafletLoaded] = useState(false);
-  const [currentPage, setCurrentPage] = useState('home'); 
-  const [filterHari, setFilterHari] = useState('Semua Hari');
   
+  // FIX SESSION REFRESH: Simpan current page di localStorage
+  const [currentPage, _setCurrentPage] = useState(() => localStorage.getItem('pusling_current_page') || 'home');
+  const setCurrentPage = (page) => {
+    localStorage.setItem('pusling_current_page', page);
+    _setCurrentPage(page);
+  };
+
+  const [filterHari, setFilterHari] = useState('Semua Hari');
   const [lokasiData, setLokasiData] = useState([]);
   const [isDataLoading, setIsDataLoading] = useState(true);
 
@@ -153,6 +159,10 @@ export default function App() {
     if (isSupabaseConfigured) {
       supabase.auth.getSession().then(({ data: { session } }) => {
         setSession(session);
+        // Kalau gaada session tapi user maksa masuk page admin dari localStorage, lempar balik ke login/home
+        if (!session && currentPage === 'admin') {
+          // Tetap di admin page, tapi nanti otomatis render form login
+        }
       });
       const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
         setSession(session);
@@ -365,12 +375,10 @@ export default function App() {
       const L = window.L;
       mapInstance.current = L.map(mapRef.current, { zoomControl: false }).setView([PERPUSDA_BASE.lat, PERPUSDA_BASE.lng], 13);
       L.control.zoom({ position: 'bottomright' }).addTo(mapInstance.current);
-      // Peta dengan warna lebih clean/cerah
       L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager_labels_under/{z}/{x}/{y}{r}.png', { attribution: '© OpenStreetMap' }).addTo(mapInstance.current);
       
       mapInstance.current.on('click', clearRouteState);
 
-      // Marker Pusat: Warna Soft Blue
       const baseIcon = L.divIcon({
         className: 'custom-icon',
         html: `<div class="relative group"><div class="absolute -inset-2 bg-blue-400 rounded-full opacity-20 group-hover:opacity-40 animate-pulse"></div><div style="background: linear-gradient(135deg, #60a5fa, #818cf8); color: white; border-radius: 50%; padding: 4px; width: 44px; height: 44px; display: flex; justify-content: center; align-items: center; box-shadow: 0 10px 15px -3px rgb(59 130 246 / 0.4); border: 3px solid white; position: relative;"><svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m4 6 8-4 8 4"/><path d="m18 10 4 2v8a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2v-8l4-2"/><path d="M14 22v-4a2 2 0 0 0-2-2v0a2 2 0 0 0-2 2v4"/><path d="M18 5v17"/><path d="M6 5v17"/><circle cx="12" cy="9" r="2"/></svg></div></div>`,
@@ -391,7 +399,6 @@ export default function App() {
 
     const filteredData = filterHari === 'Semua Hari' ? lokasiData : lokasiData.filter(loc => loc.hari === filterHari);
     
-    // Marker Lokasi: Warna Soft Rose/Teal
     const destIcon = L.divIcon({
       className: 'custom-icon transition-transform hover:scale-110',
       html: `<div style="background: linear-gradient(135deg, #34d399, #2dd4bf); color: white; border-radius: 50%; width: 34px; height: 34px; display: flex; justify-content: center; align-items: center; box-shadow: 0 4px 10px rgba(45, 212, 191, 0.4); border: 2.5px solid white;"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H20v20H6.5a2.5 2.5 0 0 1 0-5H20"/></svg></div>`,
@@ -575,10 +582,10 @@ export default function App() {
   };
   const handleFormChange = (e) => { const { name, value } = e.target; setFormData(prev => ({ ...prev, [name]: value })); };
 
-  if (!isLeafletLoaded) return <div className="flex h-screen items-center justify-center bg-slate-50 text-blue-500 font-semibold tracking-wide">Memuat Sistem Spasial...</div>;
+  if (!isLeafletLoaded) return <div className="flex h-[100dvh] items-center justify-center bg-slate-50 text-blue-500 font-semibold tracking-wide">Memuat Sistem Spasial...</div>;
 
   return (
-    <div className="h-screen w-full font-sans bg-slate-50 flex flex-col overflow-hidden relative selection:bg-blue-300 selection:text-blue-900 scroll-smooth">
+    <div className="h-[100dvh] w-full font-sans bg-slate-50 flex flex-col overflow-hidden relative selection:bg-blue-300 selection:text-blue-900 scroll-smooth">
       
       {!isSupabaseConfigured && currentPage === 'admin' && session && (
         <div className="bg-gradient-to-r from-amber-400 to-orange-400 text-white text-center text-xs py-2 font-bold z-[6000] w-full absolute top-0 shadow-lg tracking-wide uppercase backdrop-blur-md">
@@ -592,7 +599,7 @@ export default function App() {
       <div className={`flex-1 flex-col overflow-y-auto scroll-smooth ${currentPage === 'home' ? 'flex' : 'hidden'} animate-in fade-in duration-700 ease-out`}>
         
         {/* Soft Modern Landing Section */}
-        <section className="min-h-screen relative flex flex-col items-center justify-center p-6 overflow-hidden bg-slate-50 shrink-0">
+        <section className="min-h-[100dvh] relative flex flex-col items-center justify-center p-6 overflow-hidden bg-slate-50 shrink-0">
           
           {/* Soft Pastel Background Blobs */}
           <div className="absolute inset-0 overflow-hidden pointer-events-none">
@@ -625,8 +632,8 @@ export default function App() {
               Navigasi Pintar <br/> <span className="text-transparent bg-clip-text bg-gradient-to-r from-blue-500 via-indigo-500 to-teal-400">Pusling Kab. Bogor</span>
             </h1>
             
-            <p className="text-slate-500 text-lg md:text-xl max-w-2xl mb-12 font-medium leading-relaxed">
-              Temukan lokasi dan jadwal operasional armada Perpustakaan Keliling dengan super mudah. Dekatkan jendela dunia langsung dari genggamanmu.
+            <p className="text-slate-500 text-base md:text-xl max-w-2xl mb-12 font-medium leading-relaxed px-4">
+              Pantau pergerakan dan jadwal armada Perpustakaan Keliling secara presisi. Akses layanan literasi publik kini jadi jauh lebih cepat dan praktis.
             </p>
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-5 md:gap-6 w-full mb-16">
@@ -653,20 +660,20 @@ export default function App() {
             </button>
           </div>
 
-          <div className="absolute bottom-5 text-slate-400 text-[11px] font-semibold tracking-widest z-20 uppercase">
-            © {new Date().getFullYear()} Hak Cipta Sistem <span className="mx-1">•</span> Dikembangkan oleh <span className="text-blue-500 font-bold ml-1">Musab Awwal</span>
+          <div className="absolute bottom-5 text-slate-400 text-[10px] sm:text-[11px] font-semibold tracking-widest z-20 uppercase">
+            © {new Date().getFullYear()} Hak Cipta Sistem <span className="mx-1 hidden sm:inline">•</span> <br className="sm:hidden" /> Created by <span className="text-blue-500 font-bold ml-1">Musab Awwal</span>
           </div>
         </section>
 
         {/* Map Section */}
-        <section id="app-section" className="flex flex-col h-screen relative shrink-0 bg-slate-100 overflow-hidden">
+        <section id="app-section" className="flex flex-col h-[100dvh] relative shrink-0 bg-slate-100 overflow-hidden">
           <main className="flex flex-1 relative w-full h-full">
             <div id="map-container" ref={mapRef} className="absolute inset-0 z-0"></div>
 
             {isSidebarOpen && <div className="absolute inset-0 bg-slate-900/20 backdrop-blur-sm z-[40] lg:hidden transition-opacity duration-500 ease-out" onClick={() => setIsSidebarOpen(false)} />}
 
             <aside className={`absolute top-0 left-0 z-[50] h-full lg:h-auto lg:top-5 lg:left-5 flex flex-col transition-all duration-500 ease-out ${isSidebarOpen ? 'translate-x-0 opacity-100' : '-translate-x-[110%] opacity-0 lg:opacity-100 lg:-translate-x-[120%]'} w-[85vw] sm:w-[380px]`}>
-              <div className="bg-white/80 backdrop-blur-3xl lg:rounded-[2rem] shadow-2xl shadow-slate-300/50 border-r lg:border border-white h-full lg:h-[calc(100vh-2.5rem)] flex flex-col overflow-hidden">
+              <div className="bg-white/80 backdrop-blur-3xl lg:rounded-[2rem] shadow-2xl shadow-slate-300/50 border-r lg:border border-white h-[100dvh] lg:h-[calc(100dvh-2.5rem)] flex flex-col overflow-hidden">
                 <div className="bg-gradient-to-br from-blue-500 to-teal-400 p-6 lg:rounded-t-[2rem] shrink-0 relative overflow-hidden">
                   <div className="absolute top-0 right-0 w-40 h-40 bg-white/20 rounded-full blur-3xl -translate-y-10 translate-x-10"></div>
                   <div className="relative flex items-center justify-between">
@@ -692,7 +699,7 @@ export default function App() {
                   </select>
                 </div>
 
-                <div className="flex-1 overflow-y-auto p-4 scrollbar-thin scrollbar-thumb-slate-200">
+                <div className="flex-1 overflow-y-auto p-4 scrollbar-thin scrollbar-thumb-slate-200 pb-20 lg:pb-4">
                   <div className="px-1 mb-4 flex justify-between items-center">
                     <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Daftar Titik Lokasi</h3>
                     <span className="bg-blue-50 text-blue-600 border border-blue-100 text-[10px] font-bold px-2.5 py-0.5 rounded-full shadow-sm">{lokasiData.filter(l => filterHari === 'Semua Hari' || l.hari === filterHari).length + 1} Titik</span>
@@ -722,14 +729,14 @@ export default function App() {
                   </div>
                 </div>
 
-                <div className="p-4 bg-white/50 border-t border-white text-center shrink-0">
-                  <p className="text-[10px] font-bold tracking-widest text-slate-400 uppercase">© {new Date().getFullYear()} Musab Awwal</p>
+                <div className="p-4 bg-white/50 border-t border-white text-center shrink-0 hidden lg:block">
+                  <p className="text-[10px] font-bold tracking-widest text-slate-400 uppercase">Created by Musab Awwal</p>
                 </div>
               </div>
             </aside>
 
             {!isSidebarOpen && (
-              <button onClick={() => setIsSidebarOpen(true)} className="absolute top-5 left-5 z-[30] bg-white/80 backdrop-blur-xl p-4 rounded-[1.25rem] shadow-xl shadow-slate-200/50 border border-white text-slate-600 hover:text-blue-500 hover:scale-105 transition-all duration-500 ease-out group" title="Buka Panel Lokasi">
+              <button onClick={() => setIsSidebarOpen(true)} className="absolute top-5 left-5 z-[30] bg-white/80 backdrop-blur-xl p-3.5 sm:p-4 rounded-[1.25rem] shadow-xl shadow-slate-200/50 border border-white text-slate-600 hover:text-blue-500 hover:scale-105 transition-all duration-500 ease-out group" title="Buka Panel Lokasi">
                 <Menu size={22} className="group-hover:rotate-180 transition-transform duration-700 ease-in-out" />
               </button>
             )}
@@ -738,15 +745,15 @@ export default function App() {
               <div className="flex gap-2">
                 <button 
                   onClick={handleFindNearest} 
-                  className="bg-gradient-to-r from-blue-500 to-indigo-500 text-white p-4 rounded-[1.25rem] shadow-xl shadow-blue-500/20 hover:shadow-blue-500/40 hover:scale-105 transition-all duration-500 ease-out flex items-center justify-center gap-2 border border-blue-400/50"
+                  className="bg-gradient-to-r from-blue-500 to-indigo-500 text-white p-3.5 sm:p-4 rounded-[1.25rem] shadow-xl shadow-blue-500/20 hover:shadow-blue-500/40 hover:scale-105 transition-all duration-500 ease-out flex items-center justify-center gap-2 border border-blue-400/50"
                   title="Cari Pusling Terdekat"
                 >
-                  {isLocating ? <Loader2 className="animate-spin" size={22} /> : <MousePointerClick size={22} />}
+                  {isLocating ? <Loader2 className="animate-spin" size={20} /> : <MousePointerClick size={20} />}
                   <span className="text-sm font-bold hidden md:inline tracking-wide">Terdekat</span>
                 </button>
 
-                <button onClick={locateUser} className="bg-white/80 backdrop-blur-xl p-4 rounded-[1.25rem] shadow-xl shadow-slate-200/50 border border-white text-slate-600 hover:text-blue-500 hover:scale-105 transition-all duration-500 ease-out flex items-center justify-center group relative" title="Lokasi Saat Ini">
-                  <Compass size={22} className={`${isLocating ? 'animate-spin text-blue-500' : 'group-hover:rotate-45'} transition-transform duration-700 ease-out`} />
+                <button onClick={locateUser} className="bg-white/80 backdrop-blur-xl p-3.5 sm:p-4 rounded-[1.25rem] shadow-xl shadow-slate-200/50 border border-white text-slate-600 hover:text-blue-500 hover:scale-105 transition-all duration-500 ease-out flex items-center justify-center group relative" title="Lokasi Saat Ini">
+                  <Compass size={20} className={`${isLocating ? 'animate-spin text-blue-500' : 'group-hover:rotate-45'} transition-transform duration-700 ease-out`} />
                 </button>
               </div>
 
@@ -760,22 +767,22 @@ export default function App() {
             </div>
             
             {selectedLokasi && (
-              <div className="absolute bottom-6 left-5 right-5 md:left-1/2 md:right-auto md:-translate-x-1/2 md:w-[500px] bg-white/90 backdrop-blur-3xl p-6 rounded-[2rem] shadow-2xl shadow-slate-300/60 z-[40] border border-white animate-in slide-in-from-bottom-10 fade-in duration-500 ease-out">
+              <div className="absolute bottom-6 left-4 right-4 md:left-1/2 md:right-auto md:-translate-x-1/2 md:w-[500px] bg-white/90 backdrop-blur-3xl p-5 sm:p-6 rounded-[2rem] shadow-2xl shadow-slate-300/60 z-[40] border border-white animate-in slide-in-from-bottom-10 fade-in duration-500 ease-out">
                 <div className="flex justify-between items-start mb-2">
-                  <h3 className="font-black text-xl text-slate-800 pr-8">{selectedLokasi.nama}</h3>
-                  <button onClick={clearRouteState} className="absolute top-6 right-6 bg-slate-50 border border-slate-100 p-2 rounded-full text-slate-400 hover:text-slate-700 hover:bg-slate-100 hover:scale-110 transition-all duration-300 ease-out"><X size={16}/></button>
+                  <h3 className="font-black text-lg sm:text-xl text-slate-800 pr-8">{selectedLokasi.nama}</h3>
+                  <button onClick={clearRouteState} className="absolute top-5 right-5 sm:top-6 sm:right-6 bg-slate-50 border border-slate-100 p-2 rounded-full text-slate-400 hover:text-slate-700 hover:bg-slate-100 hover:scale-110 transition-all duration-300 ease-out"><X size={16}/></button>
                 </div>
-                <p className="text-slate-500 text-sm mb-6 leading-relaxed font-medium">{selectedLokasi.deskripsi}</p>
+                <p className="text-slate-500 text-xs sm:text-sm mb-5 sm:mb-6 leading-relaxed font-medium">{selectedLokasi.deskripsi}</p>
                 
-                <div className="bg-slate-50/80 backdrop-blur-sm rounded-[1.25rem] p-5 flex flex-col gap-4 border border-slate-100">
+                <div className="bg-slate-50/80 backdrop-blur-sm rounded-[1.25rem] p-4 sm:p-5 flex flex-col gap-4 border border-slate-100">
                   <div className="flex flex-row gap-4">
                     <div className="flex-1 flex flex-col justify-center border-r border-slate-200">
                       <span className="text-slate-400 text-[10px] uppercase font-bold tracking-widest mb-1.5 flex items-center gap-1.5"><Navigation size={12} className="text-blue-400"/> Jarak Rute</span>
-                      <span className="font-black text-blue-600 text-xl">{isLoadingRoute ? '...' : `${routeInfo?.distance || 0} KM`}</span>
+                      <span className="font-black text-blue-600 text-lg sm:text-xl">{isLoadingRoute ? '...' : `${routeInfo?.distance || 0} KM`}</span>
                     </div>
                     <div className="flex-1 flex flex-col justify-center pl-2">
                       <span className="text-slate-400 text-[10px] uppercase font-bold tracking-widest mb-1.5 flex items-center gap-1.5"><Truck size={12} className="text-teal-400"/> Estimasi Tiba</span>
-                      <span className="font-black text-teal-600 text-xl">{isLoadingRoute ? '...' : `${routeInfo?.duration || 0} MNT`}</span>
+                      <span className="font-black text-teal-600 text-lg sm:text-xl">{isLoadingRoute ? '...' : `${routeInfo?.duration || 0} MNT`}</span>
                     </div>
                   </div>
                 </div>
@@ -784,7 +791,7 @@ export default function App() {
                   href={`https://www.google.com/maps/dir/?api=1&destination=${selectedLokasi.lat},${selectedLokasi.lng}${userLocation ? `&origin=${userLocation.lat},${userLocation.lng}` : ''}`} 
                   target="_blank" 
                   rel="noopener noreferrer" 
-                  className="mt-4 w-full bg-blue-50 hover:bg-blue-500 hover:text-white text-blue-600 border border-blue-100 px-4 py-3.5 rounded-[1.25rem] text-sm font-bold flex items-center justify-center gap-2.5 transition-all duration-500 ease-out shadow-sm hover:shadow-lg hover:shadow-blue-500/25 group"
+                  className="mt-4 w-full bg-blue-50 hover:bg-blue-500 hover:text-white text-blue-600 border border-blue-100 px-4 py-3 sm:py-3.5 rounded-[1.25rem] text-xs sm:text-sm font-bold flex items-center justify-center gap-2.5 transition-all duration-500 ease-out shadow-sm hover:shadow-lg hover:shadow-blue-500/25 group"
                 >
                   <ExternalLink size={18} className="group-hover:scale-110 transition-transform duration-300" /> Buka Navigasi di Google Maps
                 </a>
@@ -800,12 +807,12 @@ export default function App() {
       <div className={`flex-1 flex-col overflow-y-auto ${currentPage === 'admin' ? 'flex' : 'hidden'} animate-in fade-in duration-700 ease-out ${!isSupabaseConfigured && session ? 'mt-8' : ''}`}>
         
         {!session ? (
-          <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center p-6 relative overflow-hidden">
+          <div className="min-h-[100dvh] bg-slate-50 flex flex-col items-center justify-center p-6 relative overflow-hidden">
             <div className="absolute top-[-10%] left-[-10%] w-[50vw] h-[50vw] bg-blue-200/50 blur-[120px] rounded-full pointer-events-none mix-blend-multiply opacity-60"></div>
             <div className="absolute bottom-[-10%] right-[-10%] w-[40vw] h-[40vw] bg-teal-200/50 blur-[100px] rounded-full pointer-events-none mix-blend-multiply opacity-60"></div>
             
-            <button onClick={() => setCurrentPage('home')} className="absolute top-6 left-6 text-slate-500 hover:text-slate-800 flex items-center gap-2 text-sm font-bold transition-colors bg-white/60 backdrop-blur-md px-5 py-2.5 rounded-full border border-white shadow-sm hover:bg-white hover:shadow-md">
-              <ChevronLeft size={16} /> Kembali ke Peta
+            <button onClick={() => setCurrentPage('home')} className="absolute top-6 left-6 text-slate-500 hover:text-slate-800 flex items-center gap-2 text-sm font-bold transition-colors bg-white/60 backdrop-blur-md px-4 sm:px-5 py-2.5 rounded-full border border-white shadow-sm hover:bg-white hover:shadow-md">
+              <ChevronLeft size={16} /> <span className="hidden sm:inline">Kembali ke Peta</span>
             </button>
 
             <div className="w-full max-w-md relative z-10 animate-in slide-in-from-bottom-10 fade-in duration-700 ease-out">
@@ -816,12 +823,12 @@ export default function App() {
               </div>
               
               <div className="text-center mb-10">
-                <h1 className="text-3xl font-black text-slate-800 tracking-tight mb-3">Portal Pustakawan</h1>
-                <p className="text-slate-500 text-sm font-medium">Masuk untuk mengelola basis data rute Pusling.</p>
+                <h1 className="text-2xl sm:text-3xl font-black text-slate-800 tracking-tight mb-3">Portal Pustakawan</h1>
+                <p className="text-slate-500 text-sm font-medium px-4">Masuk untuk mengelola basis data rute Pusling.</p>
               </div>
 
-              <div className="bg-white/70 backdrop-blur-2xl border border-white rounded-[2.5rem] p-8 shadow-2xl shadow-slate-200/50">
-                <form onSubmit={handleLogin} className="space-y-6">
+              <div className="bg-white/70 backdrop-blur-2xl border border-white rounded-[2rem] sm:rounded-[2.5rem] p-6 sm:p-8 shadow-2xl shadow-slate-200/50">
+                <form onSubmit={handleLogin} className="space-y-5 sm:space-y-6">
                   <div>
                     <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2.5 ml-1">Alamat Email</label>
                     <div className="relative group">
@@ -829,7 +836,7 @@ export default function App() {
                       <input 
                         type="email" required
                         value={authEmail} onChange={(e) => setAuthEmail(e.target.value)}
-                        className="w-full bg-white/50 border border-slate-200 rounded-[1.25rem] py-4 pl-12 pr-4 text-slate-700 text-sm font-semibold focus:bg-white focus:border-blue-400 focus:ring-4 focus:ring-blue-500/10 outline-none transition-all duration-300 placeholder:text-slate-400 placeholder:font-medium"
+                        className="w-full bg-white/50 border border-slate-200 rounded-[1.25rem] py-3.5 sm:py-4 pl-12 pr-4 text-slate-700 text-sm font-semibold focus:bg-white focus:border-blue-400 focus:ring-4 focus:ring-blue-500/10 outline-none transition-all duration-300 placeholder:text-slate-400 placeholder:font-medium"
                         placeholder="admin@admin.com"
                       />
                     </div>
@@ -842,7 +849,7 @@ export default function App() {
                       <input 
                         type="password" required
                         value={authPassword} onChange={(e) => setAuthPassword(e.target.value)}
-                        className="w-full bg-white/50 border border-slate-200 rounded-[1.25rem] py-4 pl-12 pr-4 text-slate-700 text-sm font-semibold focus:bg-white focus:border-blue-400 focus:ring-4 focus:ring-blue-500/10 outline-none transition-all duration-300 placeholder:text-slate-400 placeholder:font-medium"
+                        className="w-full bg-white/50 border border-slate-200 rounded-[1.25rem] py-3.5 sm:py-4 pl-12 pr-4 text-slate-700 text-sm font-semibold focus:bg-white focus:border-blue-400 focus:ring-4 focus:ring-blue-500/10 outline-none transition-all duration-300 placeholder:text-slate-400 placeholder:font-medium"
                         placeholder="••••••••"
                       />
                     </div>
@@ -850,7 +857,7 @@ export default function App() {
 
                   <button 
                     type="submit" disabled={isAuthenticating}
-                    className="w-full bg-blue-500 hover:bg-blue-600 text-white font-bold py-4 rounded-[1.25rem] mt-6 transition-all duration-500 ease-out shadow-lg shadow-blue-500/30 hover:shadow-xl hover:shadow-blue-500/40 hover:-translate-y-0.5 flex items-center justify-center gap-2"
+                    className="w-full bg-blue-500 hover:bg-blue-600 text-white font-bold py-3.5 sm:py-4 rounded-[1.25rem] mt-6 transition-all duration-500 ease-out shadow-lg shadow-blue-500/30 hover:shadow-xl hover:shadow-blue-500/40 hover:-translate-y-0.5 flex items-center justify-center gap-2"
                   >
                     {isAuthenticating ? <Loader2 size={18} className="animate-spin" /> : <ShieldCheck size={18} />}
                     {isAuthenticating ? 'Memverifikasi...' : 'Masuk ke Sistem'}
@@ -866,91 +873,93 @@ export default function App() {
             </div>
           </div>
         ) : (
-          <div className="bg-slate-50 h-full flex flex-col">
-            <header className="bg-white/70 backdrop-blur-2xl border-b border-white p-4 sticky top-0 z-20 shadow-sm">
+          <div className="bg-slate-50 min-h-[100dvh] flex flex-col">
+            <header className="bg-white/70 backdrop-blur-2xl border-b border-white p-3 sm:p-4 sticky top-0 z-20 shadow-sm">
               <div className="max-w-7xl mx-auto flex flex-row justify-between items-center gap-4">
-                <div className="flex items-center gap-4">
-                  <div className="bg-blue-500 p-2.5 rounded-2xl text-white shadow-lg shadow-blue-500/20"><Settings size={20}/></div>
+                <div className="flex items-center gap-3 sm:gap-4">
+                  <div className="bg-blue-500 p-2 sm:p-2.5 rounded-xl sm:rounded-2xl text-white shadow-lg shadow-blue-500/20"><Settings size={20}/></div>
                   <div>
-                    <h1 className="text-lg md:text-xl font-black text-slate-800 tracking-tight">Manajemen Sistem</h1>
-                    <p className="text-slate-500 text-[10px] md:text-xs font-bold uppercase tracking-widest">{session.user.email}</p>
+                    <h1 className="text-base sm:text-xl font-black text-slate-800 tracking-tight">Data Pusat</h1>
+                    <p className="text-slate-500 text-[10px] sm:text-xs font-bold uppercase tracking-widest truncate max-w-[120px] sm:max-w-none">{session.user.email}</p>
                   </div>
                 </div>
-                <div className="flex items-center gap-3">
-                  <button onClick={() => setCurrentPage('home')} className="hidden sm:flex items-center gap-2 text-sm font-bold text-slate-600 bg-white hover:bg-slate-50 px-5 py-2.5 rounded-2xl transition-all duration-300 border border-slate-200 shadow-sm hover:shadow-md">
-                    Ke Peta
+                {/* FIX MOBILE: Tombol "Ke Peta" sekarang nongol di HP (sebagai icon Map) */}
+                <div className="flex items-center gap-2 sm:gap-3">
+                  <button onClick={() => setCurrentPage('home')} className="flex items-center justify-center gap-2 text-sm font-bold text-slate-600 bg-white hover:bg-slate-50 p-2 sm:px-5 sm:py-2.5 rounded-xl sm:rounded-2xl transition-all duration-300 border border-slate-200 shadow-sm hover:shadow-md">
+                    <Map size={18} className="sm:hidden" />
+                    <span className="hidden sm:flex items-center gap-2"><ChevronLeft size={16}/> Ke Peta</span>
                   </button>
-                  <button onClick={handleLogout} className="flex items-center gap-2 text-sm font-bold text-rose-500 bg-rose-50 hover:bg-rose-500 hover:text-white px-5 py-2.5 rounded-2xl transition-all duration-300 border border-rose-100 shadow-sm hover:shadow-md hover:shadow-rose-500/20">
-                    <LogOut size={16} /> <span className="hidden sm:inline">Keluar</span>
+                  <button onClick={handleLogout} className="flex items-center justify-center gap-2 text-sm font-bold text-rose-500 bg-rose-50 hover:bg-rose-500 hover:text-white p-2 sm:px-5 sm:py-2.5 rounded-xl sm:rounded-2xl transition-all duration-300 border border-rose-100 shadow-sm hover:shadow-md hover:shadow-rose-500/20">
+                    <LogOut size={18} /> <span className="hidden sm:inline">Keluar</span>
                   </button>
                 </div>
               </div>
             </header>
 
-            <div className="max-w-7xl mx-auto p-4 md:p-6 lg:p-8 w-full flex flex-col lg:flex-row gap-6 md:gap-8 flex-1">
+            <div className="max-w-7xl mx-auto p-4 sm:p-6 lg:p-8 w-full flex flex-col lg:flex-row gap-5 sm:gap-8 flex-1">
               <div className="w-full lg:w-[45%] flex flex-col gap-5">
-                <div className="bg-white/80 backdrop-blur-xl rounded-[2rem] p-6 border border-white shadow-xl shadow-slate-200/40">
+                <div className="bg-white/80 backdrop-blur-xl rounded-[1.5rem] sm:rounded-[2rem] p-5 sm:p-6 border border-white shadow-xl shadow-slate-200/40">
                   <h3 className="font-black text-slate-800 flex items-center gap-2.5 mb-3 text-base"><MapPin className="text-blue-500" size={20}/> Editor Peta Live</h3>
-                  <p className="text-slate-500 text-sm leading-relaxed mb-5 font-medium">Klik area kosong untuk menambah titik. Geser pin di peta untuk memperbarui koordinat ke Supabase.</p>
-                  <div className="w-full h-[400px] lg:h-[500px] rounded-2xl overflow-hidden border-4 border-white relative z-0 shadow-inner">
+                  <p className="text-slate-500 text-xs sm:text-sm leading-relaxed mb-5 font-medium">Klik area kosong untuk menambah titik. Geser pin di peta untuk memperbarui koordinat ke Supabase.</p>
+                  <div className="w-full h-[350px] sm:h-[400px] lg:h-[500px] rounded-[1.25rem] overflow-hidden border-4 border-white relative z-0 shadow-inner">
                      <div id="admin-map-container" ref={adminMapRef} className="absolute inset-0"></div>
                   </div>
                 </div>
               </div>
 
-              <div className="w-full lg:w-[55%] flex flex-col">
-                <div className="bg-white/80 backdrop-blur-xl rounded-[2rem] p-6 border border-white shadow-xl shadow-slate-200/40 flex-1 flex flex-col">
+              <div className="w-full lg:w-[55%] flex flex-col pb-8">
+                <div className="bg-white/80 backdrop-blur-xl rounded-[1.5rem] sm:rounded-[2rem] p-5 sm:p-6 border border-white shadow-xl shadow-slate-200/40 flex-1 flex flex-col">
                   
-                  <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-8 gap-4">
+                  <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 sm:mb-8 gap-4">
                     <div>
-                      <h2 className="text-xl font-black text-slate-800 tracking-tight">Data Operasional Pusling</h2>
-                      <div className="flex items-center gap-2 mt-2.5">
-                        <span className="bg-slate-100 text-slate-600 text-[11px] font-bold px-3 py-1 rounded-full">{lokasiData.length} Data</span>
+                      <h2 className="text-lg sm:text-xl font-black text-slate-800 tracking-tight">Data Operasional Pusling</h2>
+                      <div className="flex flex-wrap items-center gap-2 mt-2.5">
+                        <span className="bg-slate-100 text-slate-600 text-[10px] sm:text-[11px] font-bold px-3 py-1 rounded-full">{lokasiData.length} Data</span>
                         {isSupabaseConfigured ? 
-                          <span className="flex items-center gap-1.5 text-[11px] font-bold text-teal-600 bg-teal-50 border border-teal-100 px-3 py-1 rounded-full"><div className="w-1.5 h-1.5 bg-teal-500 rounded-full animate-pulse"></div> Online DB</span> : 
-                          <span className="flex items-center gap-1.5 text-[11px] font-bold text-amber-600 bg-amber-50 border border-amber-100 px-3 py-1 rounded-full"><div className="w-1.5 h-1.5 bg-amber-500 rounded-full"></div> Offline</span>
+                          <span className="flex items-center gap-1.5 text-[10px] sm:text-[11px] font-bold text-teal-600 bg-teal-50 border border-teal-100 px-3 py-1 rounded-full"><div className="w-1.5 h-1.5 bg-teal-500 rounded-full animate-pulse"></div> Online DB</span> : 
+                          <span className="flex items-center gap-1.5 text-[10px] sm:text-[11px] font-bold text-amber-600 bg-amber-50 border border-amber-100 px-3 py-1 rounded-full"><div className="w-1.5 h-1.5 bg-amber-500 rounded-full"></div> Offline</span>
                         }
                       </div>
                     </div>
-                    <button onClick={() => handleOpenModal('add')} className="w-full sm:w-auto bg-blue-500 hover:bg-blue-600 text-white px-5 py-3 rounded-2xl text-sm font-bold flex items-center justify-center gap-2 transition-all duration-300 shadow-lg shadow-blue-500/20 hover:shadow-xl hover:shadow-blue-500/30 hover:-translate-y-0.5">
+                    <button onClick={() => handleOpenModal('add')} className="w-full sm:w-auto bg-blue-500 hover:bg-blue-600 text-white px-5 py-3 rounded-[1.25rem] text-sm font-bold flex items-center justify-center gap-2 transition-all duration-300 shadow-lg shadow-blue-500/20 hover:shadow-xl hover:shadow-blue-500/30 hover:-translate-y-0.5">
                       <Plus size={18} /> Tambah Data
                     </button>
                   </div>
 
-                  <div className="border border-slate-100 bg-white/50 rounded-2xl overflow-hidden flex-1 relative shadow-sm">
+                  <div className="border border-slate-100 bg-white/50 rounded-[1.25rem] overflow-hidden flex-1 relative shadow-sm">
                      {isDataLoading && <div className="absolute inset-0 bg-white/60 backdrop-blur-md z-10 flex items-center justify-center"><Loader2 className="animate-spin text-blue-500 w-10 h-10" /></div>}
-                    <div className="overflow-x-auto max-h-[600px] overflow-y-auto scrollbar-thin scrollbar-thumb-slate-200">
-                      <table className="w-full min-w-[600px] text-left text-sm">
+                    <div className="overflow-x-auto max-h-[500px] sm:max-h-[600px] overflow-y-auto scrollbar-thin scrollbar-thumb-slate-200">
+                      <table className="w-full min-w-[550px] text-left text-sm">
                         <thead className="bg-slate-50/80 backdrop-blur-sm border-b border-slate-100 text-slate-400 sticky top-0 z-[5]">
                           <tr>
-                            <th className="p-5 font-black uppercase tracking-widest text-[10px] w-[40%]">Informasi Lokasi</th>
-                            <th className="p-5 font-black uppercase tracking-widest text-[10px] w-[30%]">Jadwal & Waktu</th>
-                            <th className="p-5 font-black uppercase tracking-widest text-[10px] text-center w-[15%]">Koordinat</th>
-                            <th className="p-5 font-black uppercase tracking-widest text-[10px] text-center w-[15%]">Opsi</th>
+                            <th className="p-4 sm:p-5 font-black uppercase tracking-widest text-[10px] w-[40%]">Informasi Lokasi</th>
+                            <th className="p-4 sm:p-5 font-black uppercase tracking-widest text-[10px] w-[30%]">Jadwal & Waktu</th>
+                            <th className="p-4 sm:p-5 font-black uppercase tracking-widest text-[10px] text-center w-[15%]">Koordinat</th>
+                            <th className="p-4 sm:p-5 font-black uppercase tracking-widest text-[10px] text-center w-[15%]">Opsi</th>
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-slate-100">
                           {lokasiData.map(loc => (
                             <tr key={loc.id} className="hover:bg-blue-50/50 transition-colors duration-300 group">
-                              <td className="p-5 align-top">
+                              <td className="p-4 sm:p-5 align-top">
                                 <div className="font-bold text-slate-800 text-sm mb-1.5">{loc.nama}</div>
                                 <div className="text-xs text-slate-500 leading-relaxed line-clamp-2 font-medium">{loc.deskripsi}</div>
                               </td>
-                              <td className="p-5 align-top">
+                              <td className="p-4 sm:p-5 align-top">
                                 <div className="flex flex-col gap-2 items-start">
-                                  <span className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-white border border-slate-200 text-slate-600 rounded-lg text-[11px] font-bold shadow-sm"><Calendar size={12} className="text-blue-500"/> {loc.hari}</span>
-                                  <span className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-white border border-slate-200 text-slate-600 rounded-lg text-[11px] font-bold shadow-sm"><Clock size={12} className="text-teal-500"/> {loc.jam}</span>
+                                  <span className="inline-flex items-center gap-1.5 px-2.5 py-1.5 bg-white border border-slate-200 text-slate-600 rounded-lg text-[10px] sm:text-[11px] font-bold shadow-sm"><Calendar size={12} className="text-blue-500"/> {loc.hari}</span>
+                                  <span className="inline-flex items-center gap-1.5 px-2.5 py-1.5 bg-white border border-slate-200 text-slate-600 rounded-lg text-[10px] sm:text-[11px] font-bold shadow-sm"><Clock size={12} className="text-teal-500"/> {loc.jam}</span>
                                 </div>
                               </td>
-                              <td className="p-5 align-middle text-center">
-                                <div className="inline-flex flex-col text-[10px] font-mono text-slate-500 bg-slate-100 p-2.5 rounded-xl gap-1">
+                              <td className="p-4 sm:p-5 align-middle text-center">
+                                <div className="inline-flex flex-col text-[9px] sm:text-[10px] font-mono text-slate-500 bg-slate-100 p-2 sm:p-2.5 rounded-xl gap-1">
                                   <span>{loc.lat}</span><span className="text-slate-300">|</span><span>{loc.lng}</span>
                                 </div>
                               </td>
-                              <td className="p-5 align-middle">
-                                <div className="flex items-center justify-center gap-2">
-                                  <button onClick={() => handleOpenModal('edit', loc)} className="p-2.5 text-slate-400 hover:text-blue-500 hover:bg-blue-50 rounded-xl transition-all duration-300" title="Edit"><Settings size={18} /></button>
-                                  <button onClick={() => handleDelete(loc.id)} className="p-2.5 text-slate-400 hover:text-rose-500 hover:bg-rose-50 rounded-xl transition-all duration-300" title="Hapus"><Trash2 size={18} /></button>
+                              <td className="p-4 sm:p-5 align-middle">
+                                <div className="flex items-center justify-center gap-1 sm:gap-2">
+                                  <button onClick={() => handleOpenModal('edit', loc)} className="p-2 sm:p-2.5 text-slate-400 hover:text-blue-500 hover:bg-blue-50 rounded-xl transition-all duration-300" title="Edit"><Settings size={16} className="sm:w-[18px] sm:h-[18px]" /></button>
+                                  <button onClick={() => handleDelete(loc.id)} className="p-2 sm:p-2.5 text-slate-400 hover:text-rose-500 hover:bg-rose-50 rounded-xl transition-all duration-300" title="Hapus"><Trash2 size={16} className="sm:w-[18px] sm:h-[18px]" /></button>
                                 </div>
                               </td>
                             </tr>
@@ -963,9 +972,9 @@ export default function App() {
               </div>
             </div>
 
-            <div className="py-8 text-center shrink-0">
-              <p className="text-[10px] font-bold tracking-widest text-slate-400 uppercase">
-                © {new Date().getFullYear()} Sistem Informasi Geografis <span className="mx-2 text-slate-300">•</span> Dikembangkan oleh <span className="text-blue-500 ml-1">Musab Awwal</span>
+            <div className="py-6 sm:py-8 text-center shrink-0">
+              <p className="text-[9px] sm:text-[10px] font-bold tracking-widest text-slate-400 uppercase">
+                © {new Date().getFullYear()} SIG Pusling <span className="mx-2 text-slate-300">•</span> Created by <span className="text-blue-500 ml-1">Musab Awwal</span>
               </p>
             </div>
           </div>
@@ -977,61 +986,61 @@ export default function App() {
       {/* ========================================= */}
       {isModalOpen && (
         <div className="fixed inset-0 bg-slate-900/20 backdrop-blur-sm z-[3000] flex items-center justify-center p-4">
-          <div className="bg-white/90 backdrop-blur-2xl rounded-[2.5rem] shadow-2xl shadow-slate-300/60 w-full max-w-xl overflow-hidden animate-in fade-in zoom-in-95 duration-300 border border-white max-h-[95vh] flex flex-col">
-            <div className="flex justify-between items-center p-6 sm:p-8 border-b border-slate-100 shrink-0">
-              <h3 className="font-black text-xl text-slate-800 flex items-center gap-3">
-                <div className="bg-blue-100 p-2.5 rounded-2xl text-blue-500">{modalMode === 'add' ? <Plus size={20}/> : <Settings size={20}/>}</div>
+          <div className="bg-white/95 backdrop-blur-2xl rounded-[2rem] sm:rounded-[2.5rem] shadow-2xl shadow-slate-300/60 w-full max-w-xl overflow-hidden animate-in fade-in zoom-in-95 duration-300 border border-white max-h-[95dvh] flex flex-col">
+            <div className="flex justify-between items-center p-5 sm:p-8 border-b border-slate-100 shrink-0">
+              <h3 className="font-black text-lg sm:text-xl text-slate-800 flex items-center gap-3">
+                <div className="bg-blue-100 p-2 sm:p-2.5 rounded-2xl text-blue-500">{modalMode === 'add' ? <Plus size={18} className="sm:w-[20px] sm:h-[20px]"/> : <Settings size={18} className="sm:w-[20px] sm:h-[20px]"/>}</div>
                 {modalMode === 'add' ? 'Tambah Data Baru' : 'Perbarui Lokasi'}
               </h3>
-              <button onClick={() => setIsModalOpen(false)} className="text-slate-400 hover:text-slate-800 bg-slate-50 hover:bg-slate-100 p-2.5 rounded-full transition-all duration-300 ease-out"><X size={20} /></button>
+              <button onClick={() => setIsModalOpen(false)} className="text-slate-400 hover:text-slate-800 bg-slate-50 hover:bg-slate-100 p-2 sm:p-2.5 rounded-full transition-all duration-300 ease-out"><X size={20} /></button>
             </div>
             
-            <div className="overflow-y-auto scrollbar-thin scrollbar-thumb-slate-200 p-6 sm:p-8">
-              <form onSubmit={handleSaveData} className="space-y-6">
+            <div className="overflow-y-auto scrollbar-thin scrollbar-thumb-slate-200 p-5 sm:p-8">
+              <form onSubmit={handleSaveData} className="space-y-5 sm:space-y-6">
                 <div>
-                  <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2.5 ml-1">Nama Lokasi / Tempat</label>
-                  <input required type="text" name="nama" value={formData.nama} onChange={handleFormChange} className="w-full bg-white border border-slate-200 rounded-[1.25rem] p-4 text-sm font-semibold outline-none focus:border-blue-400 focus:ring-4 focus:ring-blue-500/10 transition-all duration-300 shadow-sm" placeholder="Misal: Alun-Alun Cirimekar"/>
+                  <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 ml-1">Nama Lokasi / Tempat</label>
+                  <input required type="text" name="nama" value={formData.nama} onChange={handleFormChange} className="w-full bg-white border border-slate-200 rounded-[1.25rem] p-3.5 sm:p-4 text-sm font-semibold outline-none focus:border-blue-400 focus:ring-4 focus:ring-blue-500/10 transition-all duration-300 shadow-sm" placeholder="Misal: Alun-Alun Cirimekar"/>
                 </div>
                 
-                <div className="grid grid-cols-2 gap-5">
+                <div className="grid grid-cols-2 gap-4 sm:gap-5">
                   <div>
-                    <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2.5 ml-1">Hari Operasional</label>
-                    <select name="hari" value={formData.hari} onChange={handleFormChange} className="w-full bg-white border border-slate-200 rounded-[1.25rem] p-4 text-sm font-semibold outline-none focus:border-blue-400 focus:ring-4 focus:ring-blue-500/10 transition-all duration-300 shadow-sm">
+                    <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 ml-1">Hari Operasional</label>
+                    <select name="hari" value={formData.hari} onChange={handleFormChange} className="w-full bg-white border border-slate-200 rounded-[1.25rem] p-3.5 sm:p-4 text-sm font-semibold outline-none focus:border-blue-400 focus:ring-4 focus:ring-blue-500/10 transition-all duration-300 shadow-sm">
                       {HARI_OPERASIONAL.filter(h => h !== 'Semua Hari').map(hari => <option key={hari} value={hari}>{hari}</option>)}
                     </select>
                   </div>
                   <div>
-                    <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2.5 ml-1">Jam Standby</label>
-                    <input required type="text" name="jam" value={formData.jam} onChange={handleFormChange} className="w-full bg-white border border-slate-200 rounded-[1.25rem] p-4 text-sm font-semibold outline-none focus:border-blue-400 focus:ring-4 focus:ring-blue-500/10 transition-all duration-300 shadow-sm" placeholder="09:00 - 12:00"/>
+                    <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 ml-1">Jam Standby</label>
+                    <input required type="text" name="jam" value={formData.jam} onChange={handleFormChange} className="w-full bg-white border border-slate-200 rounded-[1.25rem] p-3.5 sm:p-4 text-sm font-semibold outline-none focus:border-blue-400 focus:ring-4 focus:ring-blue-500/10 transition-all duration-300 shadow-sm" placeholder="09:00 - 12:00"/>
                   </div>
                 </div>
 
                 <div className="pt-2">
-                  <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2.5 ml-1 flex items-center justify-between">Tentukan Titik Peta <span className="text-[10px] text-teal-600 normal-case bg-teal-50 px-2.5 py-1 rounded-full">Geser pin di map</span></label>
-                  <div className="w-full h-52 rounded-[1.5rem] border-4 border-white overflow-hidden relative shadow-inner"><div id="modal-map-container" ref={modalMapRef} className="absolute inset-0"></div></div>
+                  <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 ml-1 flex items-center justify-between">Tentukan Titik Peta <span className="text-[9px] sm:text-[10px] text-teal-600 normal-case bg-teal-50 px-2.5 py-1 rounded-full">Geser pin di map</span></label>
+                  <div className="w-full h-40 sm:h-52 rounded-[1.25rem] sm:rounded-[1.5rem] border-4 border-white overflow-hidden relative shadow-inner"><div id="modal-map-container" ref={modalMapRef} className="absolute inset-0"></div></div>
                 </div>
 
-                <div className="grid grid-cols-2 gap-5">
+                <div className="grid grid-cols-2 gap-4 sm:gap-5">
                   <div>
-                    <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2.5 ml-1">Latitude</label>
-                    <input required type="number" step="any" name="lat" value={formData.lat} onChange={handleFormChange} className="w-full bg-white border border-slate-200 rounded-[1.25rem] p-3.5 text-sm font-mono outline-none focus:border-blue-400 transition-all duration-300 shadow-sm"/>
+                    <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 ml-1">Latitude</label>
+                    <input required type="number" step="any" name="lat" value={formData.lat} onChange={handleFormChange} className="w-full bg-white border border-slate-200 rounded-[1.25rem] p-3 sm:p-3.5 text-xs sm:text-sm font-mono outline-none focus:border-blue-400 transition-all duration-300 shadow-sm"/>
                   </div>
                   <div>
-                    <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2.5 ml-1">Longitude</label>
-                    <input required type="number" step="any" name="lng" value={formData.lng} onChange={handleFormChange} className="w-full bg-white border border-slate-200 rounded-[1.25rem] p-3.5 text-sm font-mono outline-none focus:border-blue-400 transition-all duration-300 shadow-sm"/>
+                    <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 ml-1">Longitude</label>
+                    <input required type="number" step="any" name="lng" value={formData.lng} onChange={handleFormChange} className="w-full bg-white border border-slate-200 rounded-[1.25rem] p-3 sm:p-3.5 text-xs sm:text-sm font-mono outline-none focus:border-blue-400 transition-all duration-300 shadow-sm"/>
                   </div>
                 </div>
 
                 <div>
-                  <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2.5 ml-1">Keterangan Tambahan</label>
-                  <textarea required name="deskripsi" value={formData.deskripsi} onChange={handleFormChange} rows="3" className="w-full bg-white border border-slate-200 rounded-[1.25rem] p-4 text-sm font-medium outline-none focus:border-blue-400 focus:ring-4 focus:ring-blue-500/10 transition-all duration-300 shadow-sm resize-none" placeholder="Target sasaran atau keterangan posisi parkir..."></textarea>
+                  <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 ml-1">Keterangan Tambahan</label>
+                  <textarea required name="deskripsi" value={formData.deskripsi} onChange={handleFormChange} rows="3" className="w-full bg-white border border-slate-200 rounded-[1.25rem] p-3.5 sm:p-4 text-sm font-medium outline-none focus:border-blue-400 focus:ring-4 focus:ring-blue-500/10 transition-all duration-300 shadow-sm resize-none" placeholder="Target sasaran atau posisi parkir..."></textarea>
                 </div>
 
-                <div className="pt-6 mt-4 flex justify-end gap-4 border-t border-slate-100">
-                  <button type="button" onClick={() => setIsModalOpen(false)} className="px-6 py-3.5 text-sm font-bold text-slate-500 hover:text-slate-700 bg-slate-50 hover:bg-slate-100 rounded-2xl transition-all duration-300">Batal</button>
-                  <button type="submit" disabled={isSaving} className="px-6 py-3.5 text-sm font-bold text-white bg-blue-500 hover:bg-blue-600 rounded-2xl transition-all duration-300 shadow-lg shadow-blue-500/20 hover:shadow-xl hover:shadow-blue-500/30 hover:-translate-y-0.5 flex items-center justify-center gap-2">
+                <div className="pt-5 sm:pt-6 mt-2 sm:mt-4 flex justify-end gap-3 sm:gap-4 border-t border-slate-100">
+                  <button type="button" onClick={() => setIsModalOpen(false)} className="px-5 sm:px-6 py-3 sm:py-3.5 text-xs sm:text-sm font-bold text-slate-500 hover:text-slate-700 bg-slate-50 hover:bg-slate-100 rounded-2xl transition-all duration-300">Batal</button>
+                  <button type="submit" disabled={isSaving} className="px-5 sm:px-6 py-3 sm:py-3.5 text-xs sm:text-sm font-bold text-white bg-blue-500 hover:bg-blue-600 rounded-2xl transition-all duration-300 shadow-lg shadow-blue-500/20 hover:shadow-xl hover:shadow-blue-500/30 hover:-translate-y-0.5 flex items-center justify-center gap-2">
                     {isSaving ? <Loader2 size={16} className="animate-spin" /> : null}
-                    {isSaving ? 'Menyimpan...' : 'Simpan Database'}
+                    {isSaving ? 'Menyimpan...' : 'Simpan Data'}
                   </button>
                 </div>
               </form>
@@ -1042,22 +1051,22 @@ export default function App() {
 
       {/* --- UI NOTIFIKASI TOAST --- */}
       {toastMsg && (
-        <div className="fixed bottom-8 left-1/2 -translate-x-1/2 px-6 py-4 rounded-full shadow-2xl shadow-slate-300/50 z-[5000] flex items-center gap-3 animate-in slide-in-from-bottom-8 fade-in bg-white/90 backdrop-blur-2xl text-slate-700 border border-white">
-          <Info size={20} className={toastType === 'error' ? "text-rose-500" : "text-teal-500"} />
-          <span className="text-sm font-bold">{toastMsg}</span>
-          <button onClick={() => setToastMsg(null)} className="ml-2 hover:bg-slate-100 p-1.5 rounded-full transition-colors duration-300"><X size={14} className="text-slate-400" /></button>
+        <div className="fixed bottom-6 sm:bottom-8 left-1/2 -translate-x-1/2 px-5 sm:px-6 py-3 sm:py-4 w-[90%] max-w-sm sm:w-auto rounded-full shadow-2xl shadow-slate-300/50 z-[5000] flex items-center gap-3 animate-in slide-in-from-bottom-8 fade-in bg-white/95 backdrop-blur-2xl text-slate-700 border border-white">
+          <Info size={20} className={`shrink-0 ${toastType === 'error' ? "text-rose-500" : "text-teal-500"}`} />
+          <span className="text-xs sm:text-sm font-bold flex-1">{toastMsg}</span>
+          <button onClick={() => setToastMsg(null)} className="ml-2 hover:bg-slate-100 p-1 sm:p-1.5 rounded-full transition-colors duration-300 shrink-0"><X size={14} className="text-slate-400" /></button>
         </div>
       )}
 
       {/* --- UI DIALOG KONFIRMASI --- */}
       {confirmDialog && (
         <div className="fixed inset-0 bg-slate-900/20 backdrop-blur-sm z-[5000] flex items-center justify-center p-4">
-          <div className="bg-white/90 backdrop-blur-2xl rounded-[2rem] shadow-2xl shadow-slate-300/50 max-w-sm w-full p-8 animate-in zoom-in-95 fade-in duration-300 border border-white">
-            <h3 className="text-xl font-black text-slate-800 mb-3">Konfirmasi Tindakan</h3>
-            <p className="text-slate-500 text-sm mb-8 leading-relaxed font-medium">{confirmDialog.message}</p>
-            <div className="flex justify-end gap-3">
-              <button onClick={confirmDialog.onCancel} className="px-5 py-3 text-sm font-bold text-slate-500 bg-slate-50 hover:bg-slate-100 rounded-2xl transition-all duration-300">Batal</button>
-              <button onClick={confirmDialog.onConfirm} className="px-5 py-3 text-sm font-bold text-white bg-blue-500 hover:bg-blue-600 rounded-2xl transition-all duration-300 shadow-lg shadow-blue-500/20 hover:shadow-xl hover:-translate-y-0.5">Ya, Lanjutkan</button>
+          <div className="bg-white/95 backdrop-blur-2xl rounded-[2rem] shadow-2xl shadow-slate-300/50 max-w-xs sm:max-w-sm w-full p-6 sm:p-8 animate-in zoom-in-95 fade-in duration-300 border border-white">
+            <h3 className="text-lg sm:text-xl font-black text-slate-800 mb-2 sm:mb-3">Konfirmasi Tindakan</h3>
+            <p className="text-slate-500 text-xs sm:text-sm mb-6 sm:mb-8 leading-relaxed font-medium">{confirmDialog.message}</p>
+            <div className="flex justify-end gap-2 sm:gap-3">
+              <button onClick={confirmDialog.onCancel} className="px-4 sm:px-5 py-2.5 sm:py-3 text-xs sm:text-sm font-bold text-slate-500 bg-slate-50 hover:bg-slate-100 rounded-xl sm:rounded-2xl transition-all duration-300">Batal</button>
+              <button onClick={confirmDialog.onConfirm} className="px-4 sm:px-5 py-2.5 sm:py-3 text-xs sm:text-sm font-bold text-white bg-blue-500 hover:bg-blue-600 rounded-xl sm:rounded-2xl transition-all duration-300 shadow-lg shadow-blue-500/20 hover:shadow-xl hover:-translate-y-0.5">Ya, Lanjut</button>
             </div>
           </div>
         </div>
