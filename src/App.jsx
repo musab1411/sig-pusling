@@ -31,7 +31,14 @@ const INITIAL_LOKASI = [
   { id: '5', nama: 'Situ Cikaret', lat: -6.4589, lng: 106.8375, hari: 'Kamis', jam: '08:00 - 11:30', deskripsi: 'Area wisata, banyak anak-anak.' },
 ];
 
-const HARI_OPERASIONAL = ['Semua Hari', 'Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu'];
+const HARI_OPERASIONAL = ['Semua Hari', 'Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu', 'Minggu'];
+
+// --- SMART SORTING ALGORITHM ---
+const dayOrderMap = { 'Senin': 1, 'Selasa': 2, 'Rabu': 3, 'Kamis': 4, 'Jumat': 5, 'Sabtu': 6, 'Minggu': 7 };
+const getTodayName = () => {
+  const days = ['Minggu', 'Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu'];
+  return days[new Date().getDay()];
+};
 
 const AppLogo = ({ className = "w-10 h-10" }) => (
   <div className={`relative flex items-center justify-center rounded-2xl bg-gradient-to-br from-blue-400 to-indigo-400 shadow-xl shadow-blue-500/20 border-2 border-white shrink-0 transition-all duration-500 hover:scale-110 hover:-translate-y-1 ${className}`}>
@@ -42,8 +49,6 @@ const AppLogo = ({ className = "w-10 h-10" }) => (
 
 export default function App() {
   const [isLeafletLoaded, setIsLeafletLoaded] = useState(false);
-  
-  // FIX SESSION REFRESH: Simpan current page di localStorage
   const [currentPage, _setCurrentPage] = useState(() => localStorage.getItem('pusling_current_page') || 'home');
   const setCurrentPage = (page) => {
     localStorage.setItem('pusling_current_page', page);
@@ -60,13 +65,9 @@ export default function App() {
   const [authPassword, setAuthPassword] = useState('');
   const [isAuthenticating, setIsAuthenticating] = useState(false);
 
-  // FIX STALE CLOSURE
   const [userLocation, _setUserLocation] = useState(null);
   const userLocationRef = useRef(null);
-  const setUserLocation = (loc) => {
-    userLocationRef.current = loc;
-    _setUserLocation(loc);
-  };
+  const setUserLocation = (loc) => { userLocationRef.current = loc; _setUserLocation(loc); };
 
   const [isLocating, setIsLocating] = useState(false);
   const userMarkerRef = useRef(null);
@@ -82,9 +83,8 @@ export default function App() {
 
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [modalMode, setModalMode] = useState('add'); 
-  const [formData, setFormData] = useState({
-    id: '', nama: '', lat: '', lng: '', hari: 'Senin', jam: '', deskripsi: ''
-  });
+  // FIX: Mengganti jam string utuh menjadi jamMulai dan jamSelesai di state
+  const [formData, setFormData] = useState({ id: '', nama: '', lat: '', lng: '', hari: 'Senin', jamMulai: '', jamSelesai: '', deskripsi: '' });
   const [isSaving, setIsSaving] = useState(false);
 
   const mapRef = useRef(null);
@@ -99,74 +99,42 @@ export default function App() {
   const modalMarkerRef = useRef(null);
 
   const showToast = (msg, type = 'info') => {
-    setToastMsg(msg);
-    setToastType(type);
-    setTimeout(() => setToastMsg(null), 4000);
+    setToastMsg(msg); setToastType(type); setTimeout(() => setToastMsg(null), 4000);
   };
 
   const getDistance = (lat1, lon1, lat2, lon2) => {
-    const R = 6371; 
-    const dLat = (lat2 - lat1) * Math.PI / 180;
-    const dLon = (lon2 - lon1) * Math.PI / 180;
-    const a = 
-      Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-      Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * Math.sin(dLon / 2) * Math.sin(dLon / 2);
-    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-    return R * c; 
+    const R = 6371; const dLat = (lat2 - lat1) * Math.PI / 180; const dLon = (lon2 - lon1) * Math.PI / 180;
+    const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) + Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * Math.sin(dLon / 2) * Math.sin(dLon / 2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a)); return R * c; 
   };
 
   const handleFindNearest = () => {
-    if (!navigator.geolocation) {
-      showToast("Geolokasi tidak didukung oleh browser Anda.", "error");
-      return;
-    }
-    
+    if (!navigator.geolocation) { showToast("Geolokasi tidak didukung.", "error"); return; }
     setIsLocating(true);
     navigator.geolocation.getCurrentPosition(
       (pos) => {
-        const userLat = pos.coords.latitude;
-        const userLng = pos.coords.longitude;
+        const userLat = pos.coords.latitude; const userLng = pos.coords.longitude;
         setUserLocation({ lat: userLat, lng: userLng });
-        
-        let nearest = null;
-        let minDistance = Infinity;
-
+        let nearest = null; let minDistance = Infinity;
         const dataToCheck = lokasiData.length > 0 ? lokasiData : INITIAL_LOKASI;
-
         dataToCheck.forEach((loc) => {
           const dist = getDistance(userLat, userLng, loc.lat, loc.lng);
-          if (dist < minDistance) {
-            minDistance = dist;
-            nearest = loc;
-          }
+          if (dist < minDistance) { minDistance = dist; nearest = loc; }
         });
-
         if (nearest) {
-          setIsLocating(false);
-          handleMarkerClick(nearest); 
+          setIsLocating(false); handleMarkerClick(nearest); 
           showToast(`Lokasi terdekat: ${nearest.nama} (${minDistance.toFixed(2)} km)`, "success");
         }
       },
-      (err) => { 
-        showToast("Gagal mendeteksi lokasi Anda.", "error"); 
-        setIsLocating(false); 
-      },
+      (err) => { showToast("Gagal mendeteksi lokasi Anda.", "error"); setIsLocating(false); },
       { enableHighAccuracy: true }
     );
   };
 
   useEffect(() => {
     if (isSupabaseConfigured) {
-      supabase.auth.getSession().then(({ data: { session } }) => {
-        setSession(session);
-        // Kalau gaada session tapi user maksa masuk page admin dari localStorage, lempar balik ke login/home
-        if (!session && currentPage === 'admin') {
-          // Tetap di admin page, tapi nanti otomatis render form login
-        }
-      });
-      const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-        setSession(session);
-      });
+      supabase.auth.getSession().then(({ data: { session } }) => setSession(session));
+      const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => setSession(session));
       return () => subscription.unsubscribe();
     } else {
       const dummySession = localStorage.getItem('dummy_pusling_session');
@@ -175,52 +143,29 @@ export default function App() {
   }, []);
 
   const handleLogin = async (e) => {
-    e.preventDefault();
-    setIsAuthenticating(true);
-
+    e.preventDefault(); setIsAuthenticating(true);
     if (isSupabaseConfigured) {
-      const { data, error } = await supabase.auth.signInWithPassword({
-        email: authEmail,
-        password: authPassword,
-      });
-
-      if (error) {
-        showToast(`Login gagal: ${error.message}`, 'error');
-      } else {
-        showToast("Berhasil login sebagai Admin!", "success");
-        setAuthEmail(''); setAuthPassword('');
-      }
+      const { error } = await supabase.auth.signInWithPassword({ email: authEmail, password: authPassword });
+      if (error) showToast(`Login gagal: ${error.message}`, 'error');
+      else { showToast("Berhasil login!", "success"); setAuthEmail(''); setAuthPassword(''); }
     } else {
       setTimeout(() => {
         if (authEmail === 'admin@admin.com' && authPassword === 'admin123') {
-          const fakeSession = { user: { email: authEmail } };
-          setSession(fakeSession);
-          localStorage.setItem('dummy_pusling_session', JSON.stringify(fakeSession));
-          showToast("Berhasil login! (Mode Simulasi)");
+          const fakeSession = { user: { email: authEmail } }; setSession(fakeSession);
+          localStorage.setItem('dummy_pusling_session', JSON.stringify(fakeSession)); showToast("Login (Mode Simulasi)");
           setAuthEmail(''); setAuthPassword('');
-        } else {
-          showToast("Kredensial salah! Gunakan admin@admin.com / admin123", "error");
-        }
+        } else showToast("Kredensial salah!", "error");
         setIsAuthenticating(false);
-      }, 1000);
-      return;
+      }, 1000); return;
     }
     setIsAuthenticating(false);
   };
 
   const handleLogout = async () => {
     if (isSupabaseConfigured) {
-      const { error } = await supabase.auth.signOut();
-      if (error) showToast(`Gagal logout: ${error.message}`, 'error');
-      else {
-        setCurrentPage('home');
-        showToast("Berhasil keluar dari sistem.");
-      }
+      await supabase.auth.signOut(); setCurrentPage('home'); showToast("Berhasil logout.");
     } else {
-      setSession(null);
-      localStorage.removeItem('dummy_pusling_session');
-      setCurrentPage('home');
-      showToast("Anda telah keluar. (Mode Simulasi)");
+      setSession(null); localStorage.removeItem('dummy_pusling_session'); setCurrentPage('home'); showToast("Logout (Simulasi)");
     }
   };
 
@@ -230,56 +175,44 @@ export default function App() {
       if (isSupabaseConfigured) {
         try {
           const { data, error } = await supabase.from('lokasi_pusling').select('*').order('created_at', { ascending: false });
-          if (error) throw error;
-          setLokasiData(data || []);
-        } catch (error) {
-          showToast(`Gagal memuat database: ${error.message}`, 'error');
-          setLokasiData(INITIAL_LOKASI); 
-        }
-      } else {
-        setTimeout(() => setLokasiData(INITIAL_LOKASI), 600);
-      }
+          if (error) throw error; setLokasiData(data || []);
+        } catch (error) { showToast(`Gagal muat database: ${error.message}`, 'error'); setLokasiData(INITIAL_LOKASI); }
+      } else { setTimeout(() => setLokasiData(INITIAL_LOKASI), 600); }
       setIsDataLoading(false);
     };
     fetchData();
   }, []);
 
   const handleSaveData = async (e) => {
-    e.preventDefault();
-    setIsSaving(true);
+    e.preventDefault(); setIsSaving(true);
+    // FIX: Menggabungkan jamMulai dan jamSelesai sebelum dikirim ke database
+    const jamCombined = `${formData.jamMulai} - ${formData.jamSelesai}`;
     const dataToSave = { 
-      nama: formData.nama, lat: parseFloat(formData.lat), lng: parseFloat(formData.lng),
-      hari: formData.hari, jam: formData.jam, deskripsi: formData.deskripsi
+      nama: formData.nama, 
+      lat: parseFloat(formData.lat), 
+      lng: parseFloat(formData.lng), 
+      hari: formData.hari, 
+      jam: jamCombined, 
+      deskripsi: formData.deskripsi 
     };
 
     if (isSupabaseConfigured) {
       try {
         if (modalMode === 'add') {
           const { data, error } = await supabase.from('lokasi_pusling').insert([dataToSave]).select();
-          if (error) throw error;
-          setLokasiData([data[0], ...lokasiData]);
-          showToast("Data lokasi berhasil ditambahkan.");
+          if (error) throw error; setLokasiData([data[0], ...lokasiData]); showToast("Lokasi ditambahkan.");
         } else {
           const { data, error } = await supabase.from('lokasi_pusling').update(dataToSave).eq('id', formData.id).select();
-          if (error) throw error;
-          setLokasiData(lokasiData.map(loc => loc.id === formData.id ? data[0] : loc));
-          if(selectedLokasi?.id === formData.id) clearRouteState();
-          showToast("Data lokasi berhasil diperbarui.");
+          if (error) throw error; setLokasiData(lokasiData.map(loc => loc.id === formData.id ? data[0] : loc));
+          if(selectedLokasi?.id === formData.id) clearRouteState(); showToast("Lokasi diperbarui.");
         }
         setIsModalOpen(false);
-      } catch (error) {
-        showToast(`Gagal menyimpan data: ${error.message}`, 'error');
-      }
+      } catch (error) { showToast(`Gagal menyimpan: ${error.message}`, 'error'); }
     } else {
       setTimeout(() => {
-        if (modalMode === 'add') {
-          setLokasiData([{ ...dataToSave, id: Date.now().toString() }, ...lokasiData]);
-        } else {
-          setLokasiData(lokasiData.map(loc => loc.id === formData.id ? { ...dataToSave, id: formData.id } : loc));
-          if(selectedLokasi?.id === formData.id) clearRouteState();
-        }
-        setIsModalOpen(false);
-        showToast("Data disimpan! (Mode Simulasi Lokal)");
+        if (modalMode === 'add') setLokasiData([{ ...dataToSave, id: Date.now().toString() }, ...lokasiData]);
+        else { setLokasiData(lokasiData.map(loc => loc.id === formData.id ? { ...dataToSave, id: formData.id } : loc)); if(selectedLokasi?.id === formData.id) clearRouteState(); }
+        setIsModalOpen(false); showToast("Disimpan! (Simulasi)");
       }, 500);
     }
     setIsSaving(false);
@@ -287,23 +220,16 @@ export default function App() {
 
   const handleDelete = (id) => {
     setConfirmDialog({
-      message: "Yakin ingin menghapus lokasi ini secara permanen?",
+      message: "Yakin hapus permanen?",
       onConfirm: async () => {
         setConfirmDialog(null);
         if (isSupabaseConfigured) {
           try {
-            const { error } = await supabase.from('lokasi_pusling').delete().eq('id', id);
-            if (error) throw error;
-            setLokasiData(lokasiData.filter(loc => loc.id !== id));
-            if(selectedLokasi?.id === id) clearRouteState();
-            showToast("Lokasi berhasil dihapus.");
-          } catch (error) {
-            showToast(`Gagal menghapus data: ${error.message}`, 'error');
-          }
+            await supabase.from('lokasi_pusling').delete().eq('id', id); setLokasiData(lokasiData.filter(loc => loc.id !== id));
+            if(selectedLokasi?.id === id) clearRouteState(); showToast("Dihapus.");
+          } catch (error) { showToast(`Gagal hapus: ${error.message}`, 'error'); }
         } else {
-          setLokasiData(lokasiData.filter(loc => loc.id !== id));
-          if(selectedLokasi?.id === id) clearRouteState();
-          showToast("Lokasi dihapus! (Mode Simulasi)");
+          setLokasiData(lokasiData.filter(loc => loc.id !== id)); if(selectedLokasi?.id === id) clearRouteState(); showToast("Dihapus! (Simulasi)");
         }
       },
       onCancel: () => setConfirmDialog(null)
@@ -311,64 +237,35 @@ export default function App() {
   };
 
   const handleDragUpdate = async (id, newLat, newLng, originLat, originLng, markerEventTarget) => {
-    const roundedLat = parseFloat(newLat.toFixed(5));
-    const roundedLng = parseFloat(newLng.toFixed(5));
-
+    const rLat = parseFloat(newLat.toFixed(5)); const rLng = parseFloat(newLng.toFixed(5));
     if (isSupabaseConfigured) {
       try {
-        const { error } = await supabase.from('lokasi_pusling').update({ lat: roundedLat, lng: roundedLng }).eq('id', id);
-        if (error) throw error;
-        setLokasiData(prev => prev.map(l => l.id === id ? { ...l, lat: roundedLat, lng: roundedLng } : l));
-        showToast("Koordinat berhasil diperbarui.");
-      } catch (error) {
-        markerEventTarget.setLatLng([originLat, originLng]);
-        showToast(`Gagal update koordinat: ${error.message}`, 'error');
-      }
-    } else {
-      setLokasiData(prev => prev.map(l => l.id === id ? { ...l, lat: roundedLat, lng: roundedLng } : l));
-      showToast("Koordinat diperbarui! (Simulasi)");
-    }
+        await supabase.from('lokasi_pusling').update({ lat: rLat, lng: rLng }).eq('id', id);
+        setLokasiData(prev => prev.map(l => l.id === id ? { ...l, lat: rLat, lng: rLng } : l)); showToast("Koordinat diupdate.");
+      } catch (error) { markerEventTarget.setLatLng([originLat, originLng]); showToast("Gagal update.", 'error'); }
+    } else { setLokasiData(prev => prev.map(l => l.id === id ? { ...l, lat: rLat, lng: rLng } : l)); showToast("Update (Simulasi)"); }
   };
 
   const locateUser = () => {
     setIsLocating(true);
-    if (!navigator.geolocation) {
-      showToast("Geolokasi tidak didukung oleh browser Anda.", "error");
-      setIsLocating(false); return;
-    }
+    if (!navigator.geolocation) { showToast("Geolokasi tidak didukung.", "error"); setIsLocating(false); return; }
     navigator.geolocation.getCurrentPosition(
-      (pos) => {
-        const { latitude, longitude } = pos.coords;
-        setUserLocation({ lat: latitude, lng: longitude });
-        setIsLocating(false);
-        if (mapInstance.current) mapInstance.current.setView([latitude, longitude], 14);
-      },
-      (err) => { showToast("Akses lokasi dibatasi oleh pengaturan perangkat.", "error"); setIsLocating(false); },
-      { enableHighAccuracy: true }
+      (pos) => { const { latitude, longitude } = pos.coords; setUserLocation({ lat: latitude, lng: longitude }); setIsLocating(false); if (mapInstance.current) mapInstance.current.setView([latitude, longitude], 14); },
+      (err) => { showToast("Akses lokasi dibatasi.", "error"); setIsLocating(false); }, { enableHighAccuracy: true }
     );
   };
 
-  const clearRouteState = () => {
-    setSelectedLokasi(null);
-    if (routeLayerRef.current && mapInstance.current) {
-      mapInstance.current.removeLayer(routeLayerRef.current);
-      routeLayerRef.current = null;
-    }
-    setRouteInfo(null);
-  };
+  const clearRouteState = () => { setSelectedLokasi(null); if (routeLayerRef.current && mapInstance.current) { mapInstance.current.removeLayer(routeLayerRef.current); routeLayerRef.current = null; } setRouteInfo(null); };
 
   // --- INITIALIZE LEAFLET ---
-  useEffect(() => {
-    if (window.innerWidth < 1024) setIsSidebarOpen(false);
-  }, []);
-
+  useEffect(() => { if (window.innerWidth < 1024) setIsSidebarOpen(false); }, []);
   useEffect(() => {
     if (document.getElementById('leaflet-css')) { setIsLeafletLoaded(true); return; }
     const link = document.createElement('link'); link.id = 'leaflet-css'; link.rel = 'stylesheet'; link.href = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css'; document.head.appendChild(link);
     const script = document.createElement('script'); script.src = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js'; script.onload = () => setIsLeafletLoaded(true); document.head.appendChild(script);
   }, []);
 
-  // --- PETA PUBLIK ---
+  // --- MAP RENDER & MARKERS ---
   useEffect(() => {
     if (!isLeafletLoaded || !mapRef.current) return;
     if (!mapInstance.current) {
@@ -376,7 +273,6 @@ export default function App() {
       mapInstance.current = L.map(mapRef.current, { zoomControl: false }).setView([PERPUSDA_BASE.lat, PERPUSDA_BASE.lng], 13);
       L.control.zoom({ position: 'bottomright' }).addTo(mapInstance.current);
       L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager_labels_under/{z}/{x}/{y}{r}.png', { attribution: '© OpenStreetMap' }).addTo(mapInstance.current);
-      
       mapInstance.current.on('click', clearRouteState);
 
       const baseIcon = L.divIcon({
@@ -385,80 +281,63 @@ export default function App() {
         iconSize: [44, 44], iconAnchor: [22, 22]
       });
 
-      L.marker([PERPUSDA_BASE.lat, PERPUSDA_BASE.lng], { icon: baseIcon }).addTo(mapInstance.current).bindTooltip(`<div class="text-sm font-bold text-slate-700">${PERPUSDA_BASE.nama}</div><div class="text-xs text-slate-400">Klik untuk rute</div>`, { direction: 'top', className: 'modern-tooltip border-0 shadow-lg' })
-        .on('click', (e) => { 
-          if(e.originalEvent) e.originalEvent.stopPropagation(); 
-          if (window.innerWidth < 1024) setIsSidebarOpen(false); 
-          handleMarkerClick(PERPUSDA_BASE); 
-        });
+      L.marker([PERPUSDA_BASE.lat, PERPUSDA_BASE.lng], { icon: baseIcon }).addTo(mapInstance.current).bindTooltip(`<div class="text-sm font-bold text-slate-700">${PERPUSDA_BASE.nama}</div>`, { direction: 'top', className: 'border-0 shadow-lg' })
+        .on('click', (e) => { if(e.originalEvent) e.originalEvent.stopPropagation(); if (window.innerWidth < 1024) setIsSidebarOpen(false); handleMarkerClick(PERPUSDA_BASE); });
     }
 
     const L = window.L;
     markersRef.current.forEach(marker => mapInstance.current.removeLayer(marker));
     markersRef.current = [];
 
-    const filteredData = filterHari === 'Semua Hari' ? lokasiData : lokasiData.filter(loc => loc.hari === filterHari);
-    
     const destIcon = L.divIcon({
       className: 'custom-icon transition-transform hover:scale-110',
       html: `<div style="background: linear-gradient(135deg, #34d399, #2dd4bf); color: white; border-radius: 50%; width: 34px; height: 34px; display: flex; justify-content: center; align-items: center; box-shadow: 0 4px 10px rgba(45, 212, 191, 0.4); border: 2.5px solid white;"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H20v20H6.5a2.5 2.5 0 0 1 0-5H20"/></svg></div>`,
       iconSize: [34, 34], iconAnchor: [17, 17]
     });
 
-    filteredData.forEach(loc => {
+    lokasiData.filter(loc => filterHari === 'Semua Hari' || loc.hari === filterHari).forEach(loc => {
       const marker = L.marker([loc.lat, loc.lng], { icon: destIcon }).addTo(mapInstance.current).on('click', (e) => {
-        if(e.originalEvent) e.originalEvent.stopPropagation(); 
-        if (window.innerWidth < 1024) setIsSidebarOpen(false); 
-        handleMarkerClick(loc);
+        if(e.originalEvent) e.originalEvent.stopPropagation(); if (window.innerWidth < 1024) setIsSidebarOpen(false); handleMarkerClick(loc);
       });
       markersRef.current.push(marker);
     });
   }, [isLeafletLoaded, lokasiData, filterHari]);
 
+  // --- SMART SORTING DATA LIST ---
+  const sortedLokasiData = [...lokasiData.filter(loc => filterHari === 'Semua Hari' || loc.hari === filterHari)].sort((a, b) => {
+    const todayNum = dayOrderMap[getTodayName()] || 1;
+    const dayA = dayOrderMap[a.hari] || 8;
+    const dayB = dayOrderMap[b.hari] || 8;
+    const weightA = (dayA - todayNum + 7) % 7;
+    const weightB = (dayB - todayNum + 7) % 7;
+    if (weightA !== weightB) return weightA - weightB;
+    const timeA = a.jam.split('-')[0].trim();
+    const timeB = b.jam.split('-')[0].trim();
+    return timeA.localeCompare(timeB);
+  });
+
   // --- PETA ADMIN ---
   useEffect(() => {
     if (!isLeafletLoaded || !adminMapRef.current || currentPage !== 'admin' || !session) return;
     const L = window.L;
-
     if (!adminMapInstance.current) {
       adminMapInstance.current = L.map(adminMapRef.current).setView([PERPUSDA_BASE.lat, PERPUSDA_BASE.lng], 12);
       L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png').addTo(adminMapInstance.current);
-
-      const baseIcon = L.divIcon({
-        className: 'custom-icon',
-        html: `<div style="background: linear-gradient(135deg, #60a5fa, #818cf8); color: white; border-radius: 50%; padding: 4px; width: 36px; height: 36px; display: flex; justify-content: center; align-items: center; box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1); border: 2px solid white;"><svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m4 6 8-4 8 4"/><path d="m18 10 4 2v8a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2v-8l4-2"/><path d="M14 22v-4a2 2 0 0 0-2-2v0a2 2 0 0 0-2 2v4"/><path d="M18 5v17"/><path d="M6 5v17"/><circle cx="12" cy="9" r="2"/></svg></div>`,
-        iconSize: [36, 36], iconAnchor: [18, 18]
-      });
-
-      L.marker([PERPUSDA_BASE.lat, PERPUSDA_BASE.lng], { icon: baseIcon }).addTo(adminMapInstance.current).bindPopup(`<b>Pusat Perpusda</b>`);
-
-      adminMapInstance.current.on('click', (e) => {
-        setModalMode('add');
-        setFormData({ id: '', nama: '', lat: parseFloat(e.latlng.lat).toFixed(5), lng: parseFloat(e.latlng.lng).toFixed(5), hari: 'Senin', jam: '', deskripsi: '' });
-        setIsModalOpen(true);
-      });
+      adminMapInstance.current.on('click', (e) => { setModalMode('add'); setFormData({ id: '', nama: '', lat: parseFloat(e.latlng.lat).toFixed(5), lng: parseFloat(e.latlng.lng).toFixed(5), hari: 'Senin', jamMulai: '09:00', jamSelesai: '12:00', deskripsi: '' }); setIsModalOpen(true); });
     }
-
     adminMarkersRef.current.forEach(marker => adminMapInstance.current.removeLayer(marker));
     adminMarkersRef.current = [];
-
     const adminIcon = L.divIcon({
       className: 'custom-icon cursor-move hover:scale-110 transition-transform',
       html: `<div style="background: linear-gradient(135deg, #34d399, #2dd4bf); color: white; border-radius: 50%; padding: 6px; width: 34px; height: 34px; display: flex; justify-content: center; align-items: center; box-shadow: 0 6px 12px rgba(45, 212, 191, 0.3); border: 2.5px solid white;"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H20v20H6.5a2.5 2.5 0 0 1 0-5H20"/></svg></div>`,
       iconSize: [34, 34], iconAnchor: [17, 17]
     });
-
     lokasiData.forEach(loc => {
-      const marker = L.marker([loc.lat, loc.lng], { icon: adminIcon, draggable: true })
-        .addTo(adminMapInstance.current)
-        .on('click', (e) => { 
-          if(e.originalEvent) e.originalEvent.stopPropagation(); 
-          handleOpenModal('edit', loc); 
-        })
+      const marker = L.marker([loc.lat, loc.lng], { icon: adminIcon, draggable: true }).addTo(adminMapInstance.current)
+        .on('click', (e) => { if(e.originalEvent) e.originalEvent.stopPropagation(); handleOpenModal('edit', loc); })
         .on('dragend', (e) => {
           const newLatLng = e.target.getLatLng();
-          setConfirmDialog({
-            message: `Update koordinat untuk lokasi "${loc.nama}" ke Database?`,
+          setConfirmDialog({ message: `Update koordinat untuk lokasi "${loc.nama}" ke Database?`,
             onConfirm: () => { handleDragUpdate(loc.id, newLatLng.lat, newLatLng.lng, loc.lat, loc.lng, e.target); setConfirmDialog(null); },
             onCancel: () => { e.target.setLatLng([loc.lat, loc.lng]); setConfirmDialog(null); }
           });
@@ -467,34 +346,25 @@ export default function App() {
     });
   }, [isLeafletLoaded, currentPage, lokasiData, session]);
 
-  useEffect(() => {
-    setTimeout(() => {
-      if (currentPage === 'home' && mapInstance.current) mapInstance.current.invalidateSize();
-      if (currentPage === 'admin' && session && adminMapInstance.current) adminMapInstance.current.invalidateSize();
-    }, 300);
-  }, [currentPage, isSidebarOpen, session]);
+  useEffect(() => { setTimeout(() => { if (currentPage === 'home' && mapInstance.current) mapInstance.current.invalidateSize(); if (currentPage === 'admin' && session && adminMapInstance.current) adminMapInstance.current.invalidateSize(); }, 300); }, [currentPage, isSidebarOpen, session]);
 
   useEffect(() => {
     if (!mapInstance.current || !userLocation || currentPage !== 'home') return;
     const L = window.L;
     if (userMarkerRef.current) mapInstance.current.removeLayer(userMarkerRef.current);
-
     const userIcon = L.divIcon({
       className: 'custom-icon',
       html: `<div class="relative flex h-6 w-6"><span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-60"></span><span class="relative inline-flex rounded-full h-6 w-6 bg-blue-500 border-[3px] border-white shadow-lg"></span></div>`,
       iconSize: [24, 24], iconAnchor: [12, 12]
     });
-
     userMarkerRef.current = L.marker([userLocation.lat, userLocation.lng], { icon: userIcon, zIndexOffset: 1000 }).addTo(mapInstance.current);
   }, [userLocation, currentPage]);
 
   useEffect(() => {
     if (isModalOpen && modalMapRef.current && isLeafletLoaded) {
       const timer = setTimeout(() => {
-        const L = window.L;
-        let initialLat = parseFloat(formData.lat); let initialLng = parseFloat(formData.lng);
+        const L = window.L; let initialLat = parseFloat(formData.lat); let initialLng = parseFloat(formData.lng);
         if (isNaN(initialLat) || isNaN(initialLng)) { initialLat = PERPUSDA_BASE.lat; initialLng = PERPUSDA_BASE.lng; }
-
         if (!modalMapInstance.current) {
           modalMapInstance.current = L.map(modalMapRef.current).setView([initialLat, initialLng], 14);
           L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png').addTo(modalMapInstance.current);
@@ -506,14 +376,9 @@ export default function App() {
           modalMarkerRef.current = L.marker([initialLat, initialLng], { icon: modalIcon, draggable: true }).addTo(modalMapInstance.current);
           modalMarkerRef.current.on('dragend', (e) => { const { lat, lng } = e.target.getLatLng(); setFormData(prev => ({ ...prev, lat: lat.toFixed(5), lng: lng.toFixed(5) })); modalMapInstance.current.panTo([lat, lng]); });
           modalMapInstance.current.on('click', (e) => { const { lat, lng } = e.latlng; modalMarkerRef.current.setLatLng([lat, lng]); setFormData(prev => ({ ...prev, lat: lat.toFixed(5), lng: lng.toFixed(5) })); modalMapInstance.current.panTo([lat, lng]); });
-        } else {
-          modalMapInstance.current.invalidateSize();
-        }
-      }, 250);
-      return () => clearTimeout(timer);
-    } else {
-      if (modalMapInstance.current) { modalMapInstance.current.remove(); modalMapInstance.current = null; modalMarkerRef.current = null; }
-    }
+        } else modalMapInstance.current.invalidateSize();
+      }, 250); return () => clearTimeout(timer);
+    } else { if (modalMapInstance.current) { modalMapInstance.current.remove(); modalMapInstance.current = null; modalMarkerRef.current = null; } }
   }, [isModalOpen, isLeafletLoaded]);
 
   useEffect(() => {
@@ -527,57 +392,43 @@ export default function App() {
     setIsLoadingRoute(true);
     try {
       const url = `https://router.project-osrm.org/route/v1/driving/${start.lng},${start.lat};${end.lng},${end.lat}?overview=full&geometries=geojson`;
-      const res = await fetch(url);
-      const data = await res.json();
+      const res = await fetch(url); const data = await res.json();
       const L = window.L;
       if (data.routes && data.routes.length > 0) {
-        const route = data.routes[0];
-        setRouteInfo({ distance: (route.distance / 1000).toFixed(2), duration: Math.ceil(route.duration / 60) });
+        const route = data.routes[0]; setRouteInfo({ distance: (route.distance / 1000).toFixed(2), duration: Math.ceil(route.duration / 60) });
         routeLayerRef.current = L.geoJSON(route.geometry, { style: { color: '#60a5fa', weight: 6, opacity: 0.85, lineCap: 'round', lineJoin: 'round' } }).addTo(mapInstance.current);
         mapInstance.current.fitBounds(routeLayerRef.current.getBounds(), { padding: [50, 50], animate: true, duration: 1.5 });
       }
     } catch (error) {
-      const L = window.L;
-      routeLayerRef.current = L.polyline([[start.lat, start.lng], [end.lat, end.lng]], { color: '#60a5fa', dashArray: '8, 12', weight: 4 }).addTo(mapInstance.current);
+      const L = window.L; routeLayerRef.current = L.polyline([[start.lat, start.lng], [end.lat, end.lng]], { color: '#60a5fa', dashArray: '8, 12', weight: 4 }).addTo(mapInstance.current);
       mapInstance.current.fitBounds(routeLayerRef.current.getBounds(), { padding: [50, 50], animate: true, duration: 1.5 });
-    } finally {
-      setIsLoadingRoute(false);
-    }
+    } finally { setIsLoadingRoute(false); }
   };
 
   const handleMarkerClick = (loc) => {
     setSelectedLokasi(loc);
-    if (routeLayerRef.current && mapInstance.current) { 
-      mapInstance.current.removeLayer(routeLayerRef.current); 
-      routeLayerRef.current = null; 
-    }
+    if (routeLayerRef.current && mapInstance.current) { mapInstance.current.removeLayer(routeLayerRef.current); routeLayerRef.current = null; }
     setRouteInfo(null);
-
     const currentUserLoc = userLocationRef.current;
-
-    if (currentUserLoc) { 
-      drawRoute(currentUserLoc, loc); 
-    } else {
+    if (currentUserLoc) { drawRoute(currentUserLoc, loc); } else {
       setIsLoadingRoute(true);
       if (!navigator.geolocation) { showToast("Geolokasi ditolak.", "error"); setIsLoadingRoute(false); return; }
       navigator.geolocation.getCurrentPosition(
-        async (pos) => {
-          const { latitude, longitude } = pos.coords;
-          const newLoc = { lat: latitude, lng: longitude };
-          setUserLocation(newLoc); 
-          if (mapInstance.current) mapInstance.current.setView([latitude, longitude], 13);
-          await drawRoute(newLoc, loc);
-        },
-        (err) => { showToast("Akses lokasi dibatasi.", "error"); setIsLoadingRoute(false); },
-        { enableHighAccuracy: true }
+        async (pos) => { const { latitude, longitude } = pos.coords; const newLoc = { lat: latitude, lng: longitude }; setUserLocation(newLoc); if (mapInstance.current) mapInstance.current.setView([latitude, longitude], 13); await drawRoute(newLoc, loc); },
+        (err) => { showToast("Akses lokasi dibatasi.", "error"); setIsLoadingRoute(false); }, { enableHighAccuracy: true }
       );
     }
   };
 
   const handleOpenModal = (mode, loc = null) => {
-    setModalMode(mode);
-    if (mode === 'edit' && loc) setFormData(loc);
-    else setFormData({ id: '', nama: '', lat: '', lng: '', hari: 'Senin', jam: '', deskripsi: '' });
+    setModalMode(mode); 
+    if (mode === 'edit' && loc) {
+      // FIX: Memecah jam dari database ("09:00 - 12:00") jadi dua field form
+      const [jamMulai, jamSelesai] = loc.jam ? loc.jam.split('-').map(s => s.trim()) : ['09:00', '12:00'];
+      setFormData({ ...loc, jamMulai: jamMulai || '', jamSelesai: jamSelesai || '' });
+    } else {
+      setFormData({ id: '', nama: '', lat: '', lng: '', hari: 'Senin', jamMulai: '09:00', jamSelesai: '12:00', deskripsi: '' }); 
+    }
     setIsModalOpen(true);
   };
   const handleFormChange = (e) => { const { name, value } = e.target; setFormData(prev => ({ ...prev, [name]: value })); };
@@ -598,10 +449,7 @@ export default function App() {
       {/* ========================================= */}
       <div className={`flex-1 flex-col overflow-y-auto scroll-smooth ${currentPage === 'home' ? 'flex' : 'hidden'} animate-in fade-in duration-700 ease-out`}>
         
-        {/* Soft Modern Landing Section */}
         <section className="min-h-[100dvh] relative flex flex-col items-center justify-center p-6 overflow-hidden bg-slate-50 shrink-0">
-          
-          {/* Soft Pastel Background Blobs */}
           <div className="absolute inset-0 overflow-hidden pointer-events-none">
             <div className="absolute -top-[20%] -left-[10%] w-[60vw] h-[60vw] rounded-full bg-blue-200/40 blur-[120px] mix-blend-multiply opacity-70 animate-pulse duration-10000"></div>
             <div className="absolute top-[30%] -right-[10%] w-[50vw] h-[50vw] rounded-full bg-teal-200/40 blur-[100px] mix-blend-multiply opacity-60"></div>
@@ -670,11 +518,14 @@ export default function App() {
           <main className="flex flex-1 relative w-full h-full">
             <div id="map-container" ref={mapRef} className="absolute inset-0 z-0"></div>
 
-            {isSidebarOpen && <div className="absolute inset-0 bg-slate-900/20 backdrop-blur-sm z-[40] lg:hidden transition-opacity duration-500 ease-out" onClick={() => setIsSidebarOpen(false)} />}
+            {/* Backdrop Transparan saat panel mobile terbuka */}
+            {isSidebarOpen && <div className="absolute inset-0 bg-slate-900/10 backdrop-blur-[2px] z-[40] lg:hidden transition-opacity duration-700 ease-in-out" onClick={() => setIsSidebarOpen(false)} />}
 
-            <aside className={`absolute top-0 left-0 z-[50] h-full lg:h-auto lg:top-5 lg:left-5 flex flex-col transition-all duration-500 ease-out ${isSidebarOpen ? 'translate-x-0 opacity-100' : '-translate-x-[110%] opacity-0 lg:opacity-100 lg:-translate-x-[120%]'} w-[85vw] sm:w-[380px]`}>
-              <div className="bg-white/80 backdrop-blur-3xl lg:rounded-[2rem] shadow-2xl shadow-slate-300/50 border-r lg:border border-white h-[100dvh] lg:h-[calc(100dvh-2.5rem)] flex flex-col overflow-hidden">
-                <div className="bg-gradient-to-br from-blue-500 to-teal-400 p-6 lg:rounded-t-[2rem] shrink-0 relative overflow-hidden">
+            {/* SIDEBAR DENGAN ULTRA GLASSMORPHISM & SMOOTH TRANSITION */}
+            <aside className={`absolute top-0 left-0 z-[50] h-[100dvh] lg:h-auto lg:top-4 lg:bottom-4 lg:left-4 flex flex-col transition-transform duration-700 ease-[cubic-bezier(0.25,0.8,0.25,1)] ${isSidebarOpen ? 'translate-x-0' : '-translate-x-[110%] lg:-translate-x-[120%]'} w-[85vw] sm:w-[380px]`}>
+              
+              <div className="bg-white/40 backdrop-blur-2xl lg:rounded-[2rem] shadow-[0_8px_32px_rgba(0,0,0,0.12)] border-r lg:border border-white/60 h-full flex flex-col overflow-hidden">
+                <div className="bg-gradient-to-br from-blue-500/90 to-teal-400/90 backdrop-blur-xl p-6 lg:rounded-t-[2rem] shrink-0 relative overflow-hidden border-b border-white/20">
                   <div className="absolute top-0 right-0 w-40 h-40 bg-white/20 rounded-full blur-3xl -translate-y-10 translate-x-10"></div>
                   <div className="relative flex items-center justify-between">
                     <div className="flex items-center gap-4">
@@ -684,14 +535,14 @@ export default function App() {
                         <p className="text-blue-50 text-[11px] font-semibold tracking-wider">KABUPATEN BOGOR</p>
                       </div>
                     </div>
-                    <button onClick={() => setIsSidebarOpen(false)} className="text-white/80 hover:text-white bg-white/10 hover:bg-white/20 p-2.5 rounded-full backdrop-blur-md transition-all duration-300 ease-out" title="Tutup Panel"><X size={18} /></button>
+                    <button onClick={() => setIsSidebarOpen(false)} className="text-white/80 hover:text-white bg-white/10 hover:bg-white/30 hover:rotate-90 p-2.5 rounded-full backdrop-blur-md transition-all duration-500 ease-out" title="Tutup Panel"><X size={18} /></button>
                   </div>
                 </div>
 
-                <div className="p-5 border-b border-white/50 bg-white/40">
-                  <label className="text-[11px] font-bold text-slate-400 uppercase tracking-widest flex items-center gap-2 mb-3"><Calendar size={14} className="text-blue-500"/> Jadwal Operasional</label>
+                <div className="p-5 border-b border-white/30 bg-white/20 backdrop-blur-sm">
+                  <label className="text-[11px] font-bold text-slate-600 uppercase tracking-widest flex items-center gap-2 mb-3"><Calendar size={14} className="text-blue-600"/> Jadwal Operasional</label>
                   <select 
-                    className="w-full bg-white/80 border border-slate-200 rounded-2xl p-3.5 text-sm font-bold text-slate-700 focus:ring-4 focus:ring-blue-500/10 focus:border-blue-400 outline-none transition-all duration-300 ease-out shadow-sm cursor-pointer appearance-none"
+                    className="w-full bg-white/50 backdrop-blur-md border border-white/60 rounded-2xl p-3.5 text-sm font-bold text-slate-700 focus:ring-4 focus:ring-blue-500/20 focus:bg-white outline-none transition-all duration-300 ease-out shadow-sm cursor-pointer appearance-none"
                     value={filterHari}
                     onChange={(e) => { setFilterHari(e.target.value); clearRouteState(); mapInstance.current.setView([PERPUSDA_BASE.lat, PERPUSDA_BASE.lng], 13); if (window.innerWidth < 1024) setIsSidebarOpen(false); }}
                   >
@@ -699,44 +550,48 @@ export default function App() {
                   </select>
                 </div>
 
-                <div className="flex-1 overflow-y-auto p-4 scrollbar-thin scrollbar-thumb-slate-200 pb-20 lg:pb-4">
+                <div className="flex-1 overflow-y-auto p-4 scrollbar-thin scrollbar-thumb-white/50 pb-20 lg:pb-4">
                   <div className="px-1 mb-4 flex justify-between items-center">
-                    <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Daftar Titik Lokasi</h3>
-                    <span className="bg-blue-50 text-blue-600 border border-blue-100 text-[10px] font-bold px-2.5 py-0.5 rounded-full shadow-sm">{lokasiData.filter(l => filterHari === 'Semua Hari' || l.hari === filterHari).length + 1} Titik</span>
+                    <h3 className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Daftar Titik Lokasi</h3>
+                    <span className="bg-blue-500/10 text-blue-700 border border-blue-200/50 text-[10px] font-bold px-2.5 py-0.5 rounded-full backdrop-blur-sm">{sortedLokasiData.length + 1} Titik</span>
                   </div>
 
                   <div className="space-y-3">
-                    <div onClick={() => { if (window.innerWidth < 1024) setIsSidebarOpen(false); handleMarkerClick(PERPUSDA_BASE); }} className={`p-4 rounded-[1.25rem] border-2 cursor-pointer transition-all duration-300 ease-out group ${selectedLokasi?.id === PERPUSDA_BASE.id ? 'border-blue-400 bg-blue-50 shadow-md shadow-blue-500/10' : 'border-white bg-white/60 shadow-sm hover:border-blue-200 hover:shadow-md hover:bg-white'}`}>
-                      <h4 className="font-bold text-slate-800 text-sm mb-2 flex items-center gap-3"><div className="bg-blue-100 p-2 rounded-xl group-hover:bg-blue-500 group-hover:text-white transition-colors duration-300 text-blue-600"><Library size={16} /></div> {PERPUSDA_BASE.nama}</h4>
-                      <p className="text-xs font-medium text-slate-500 ml-[44px]">Pusat Armada Perpustakaan</p>
+                    <div onClick={() => { if (window.innerWidth < 1024) setIsSidebarOpen(false); handleMarkerClick(PERPUSDA_BASE); }} className={`p-4 rounded-[1.25rem] border-2 cursor-pointer transition-all duration-500 ease-[cubic-bezier(0.25,0.8,0.25,1)] group ${selectedLokasi?.id === PERPUSDA_BASE.id ? 'border-blue-400 bg-blue-50/80 backdrop-blur-md shadow-md shadow-blue-500/10' : 'border-white/50 bg-white/30 backdrop-blur-md shadow-sm hover:bg-white/70 hover:shadow-lg'}`}>
+                      <h4 className="font-bold text-slate-800 text-sm mb-2 flex items-center gap-3"><div className="bg-blue-100/80 p-2 rounded-xl group-hover:bg-blue-500 group-hover:text-white transition-colors duration-300 text-blue-600"><Library size={16} /></div> {PERPUSDA_BASE.nama}</h4>
+                      <p className="text-xs font-medium text-slate-600 ml-[44px]">Pusat Armada Perpustakaan</p>
                     </div>
                     
                     {isDataLoading ? (
-                      <div className="flex flex-col items-center justify-center p-8 text-slate-400 gap-3"><Loader2 className="animate-spin text-blue-400 w-6 h-6" /><span className="text-xs font-medium">Memuat data...</span></div>
+                      <div className="flex flex-col items-center justify-center p-8 text-slate-500 gap-3"><Loader2 className="animate-spin text-blue-500 w-6 h-6" /><span className="text-xs font-medium">Memuat data...</span></div>
                     ) : (
                       <>
-                        {lokasiData.filter(loc => filterHari === 'Semua Hari' || loc.hari === filterHari).map(loc => (
-                          <div key={loc.id} onClick={() => { if (window.innerWidth < 1024) setIsSidebarOpen(false); handleMarkerClick(loc); }} className={`p-4 rounded-[1.25rem] border-2 cursor-pointer transition-all duration-300 ease-out group ${selectedLokasi?.id === loc.id ? 'border-teal-400 bg-teal-50 shadow-md shadow-teal-500/10' : 'border-white bg-white/60 shadow-sm hover:border-teal-200 hover:shadow-md hover:bg-white'}`}>
-                            <h4 className="font-bold text-slate-800 text-sm mb-3 group-hover:text-teal-600 transition-colors duration-300">{loc.nama}</h4>
-                            <div className="flex flex-wrap gap-2">
-                              <span className="flex items-center gap-1.5 bg-slate-50 border border-slate-100 text-slate-600 px-2.5 py-1 rounded-lg text-[11px] font-bold group-hover:bg-white transition-colors duration-300"><Calendar size={12} className="text-teal-500"/> {loc.hari}</span>
-                              <span className="flex items-center gap-1.5 bg-slate-50 border border-slate-100 text-slate-600 px-2.5 py-1 rounded-lg text-[11px] font-bold group-hover:bg-white transition-colors duration-300"><Clock size={12} className="text-teal-500"/> {loc.jam}</span>
+                        {sortedLokasiData.map(loc => {
+                          const isToday = loc.hari === getTodayName();
+                          return (
+                            <div key={loc.id} onClick={() => { if (window.innerWidth < 1024) setIsSidebarOpen(false); handleMarkerClick(loc); }} className={`relative p-4 rounded-[1.25rem] border-2 cursor-pointer transition-all duration-500 ease-[cubic-bezier(0.25,0.8,0.25,1)] group overflow-hidden ${selectedLokasi?.id === loc.id ? 'border-teal-400 bg-teal-50/80 backdrop-blur-md shadow-md shadow-teal-500/10' : 'border-white/50 bg-white/30 backdrop-blur-md shadow-sm hover:bg-white/70 hover:shadow-lg'}`}>
+                              {isToday && <div className="absolute top-0 right-0 bg-gradient-to-l from-rose-400 to-orange-400 text-white text-[9px] font-bold px-3 py-1 rounded-bl-xl tracking-widest uppercase shadow-sm">Hari Ini</div>}
+                              <h4 className={`font-bold text-sm mb-3 group-hover:text-teal-700 transition-colors duration-300 pr-12 ${isToday ? 'text-slate-900' : 'text-slate-800'}`}>{loc.nama}</h4>
+                              <div className="flex flex-wrap gap-2">
+                                <span className={`flex items-center gap-1.5 border px-2.5 py-1 rounded-lg text-[11px] font-bold transition-colors duration-300 ${isToday ? 'bg-rose-50 border-rose-200 text-rose-700' : 'bg-white/50 border-white/60 text-slate-700 group-hover:bg-white'}`}><Calendar size={12} className={isToday ? 'text-rose-500' : 'text-teal-500'}/> {loc.hari}</span>
+                                <span className="flex items-center gap-1.5 bg-white/50 border border-white/60 text-slate-700 px-2.5 py-1 rounded-lg text-[11px] font-bold group-hover:bg-white transition-colors duration-300"><Clock size={12} className="text-teal-500"/> {loc.jam}</span>
+                              </div>
                             </div>
-                          </div>
-                        ))}
+                          );
+                        })}
                       </>
                     )}
                   </div>
                 </div>
 
-                <div className="p-4 bg-white/50 border-t border-white text-center shrink-0 hidden lg:block">
-                  <p className="text-[10px] font-bold tracking-widest text-slate-400 uppercase">Created by Musab Awwal</p>
+                <div className="p-4 bg-white/20 backdrop-blur-sm border-t border-white/30 text-center shrink-0 hidden lg:block">
+                  <p className="text-[10px] font-bold tracking-widest text-slate-500 uppercase">Created by Musab Awwal</p>
                 </div>
               </div>
             </aside>
 
             {!isSidebarOpen && (
-              <button onClick={() => setIsSidebarOpen(true)} className="absolute top-5 left-5 z-[30] bg-white/80 backdrop-blur-xl p-3.5 sm:p-4 rounded-[1.25rem] shadow-xl shadow-slate-200/50 border border-white text-slate-600 hover:text-blue-500 hover:scale-105 transition-all duration-500 ease-out group" title="Buka Panel Lokasi">
+              <button onClick={() => setIsSidebarOpen(true)} className="absolute top-5 left-5 z-[30] bg-white/60 backdrop-blur-2xl p-3.5 sm:p-4 rounded-[1.25rem] shadow-[0_8px_32px_rgba(0,0,0,0.1)] border border-white/60 text-slate-700 hover:text-blue-600 hover:bg-white/90 hover:scale-105 transition-all duration-500 ease-[cubic-bezier(0.25,0.8,0.25,1)] group" title="Buka Panel Lokasi">
                 <Menu size={22} className="group-hover:rotate-180 transition-transform duration-700 ease-in-out" />
               </button>
             )}
@@ -745,43 +600,43 @@ export default function App() {
               <div className="flex gap-2">
                 <button 
                   onClick={handleFindNearest} 
-                  className="bg-gradient-to-r from-blue-500 to-indigo-500 text-white p-3.5 sm:p-4 rounded-[1.25rem] shadow-xl shadow-blue-500/20 hover:shadow-blue-500/40 hover:scale-105 transition-all duration-500 ease-out flex items-center justify-center gap-2 border border-blue-400/50"
+                  className="bg-gradient-to-r from-blue-500/90 to-indigo-500/90 backdrop-blur-md text-white p-3.5 sm:p-4 rounded-[1.25rem] shadow-xl shadow-blue-500/20 hover:shadow-blue-500/40 hover:scale-105 transition-all duration-500 ease-out flex items-center justify-center gap-2 border border-blue-400/50"
                   title="Cari Pusling Terdekat"
                 >
                   {isLocating ? <Loader2 className="animate-spin" size={20} /> : <MousePointerClick size={20} />}
                   <span className="text-sm font-bold hidden md:inline tracking-wide">Terdekat</span>
                 </button>
 
-                <button onClick={locateUser} className="bg-white/80 backdrop-blur-xl p-3.5 sm:p-4 rounded-[1.25rem] shadow-xl shadow-slate-200/50 border border-white text-slate-600 hover:text-blue-500 hover:scale-105 transition-all duration-500 ease-out flex items-center justify-center group relative" title="Lokasi Saat Ini">
+                <button onClick={locateUser} className="bg-white/60 backdrop-blur-2xl p-3.5 sm:p-4 rounded-[1.25rem] shadow-[0_8px_32px_rgba(0,0,0,0.1)] border border-white/60 text-slate-700 hover:text-blue-600 hover:bg-white/90 hover:scale-105 transition-all duration-500 ease-[cubic-bezier(0.25,0.8,0.25,1)] flex items-center justify-center group relative" title="Lokasi Saat Ini">
                   <Compass size={20} className={`${isLocating ? 'animate-spin text-blue-500' : 'group-hover:rotate-45'} transition-transform duration-700 ease-out`} />
                 </button>
               </div>
 
-              <div className="bg-white/80 backdrop-blur-2xl p-5 rounded-[1.25rem] shadow-xl shadow-slate-200/50 border border-white w-48 origin-top-right transition-all duration-500 ease-out hidden sm:block">
-                <h4 className="text-[10px] font-black text-slate-400 mb-4 uppercase tracking-widest">Keterangan Peta</h4>
-                <div className="flex items-center gap-3 mb-3.5"><div className="w-3.5 h-3.5 rounded-full bg-blue-500 ring-4 ring-blue-500/20"></div><span className="text-xs font-bold text-slate-600">Lokasimu</span></div>
-                <div className="flex items-center gap-3 mb-3.5"><div className="w-4 h-4 rounded-md bg-blue-400 flex items-center justify-center shadow-sm"><Library size={10} color="white"/></div><span className="text-xs font-bold text-slate-600">Pusat Armada</span></div>
-                <div className="flex items-center gap-3 mb-3.5"><div className="w-4 h-4 rounded-full bg-teal-400 flex items-center justify-center shadow-sm"><MapPin size={10} color="white"/></div><span className="text-xs font-bold text-slate-600">Titik Pusling</span></div>
-                <div className="flex items-center gap-3"><div className="w-5 h-1.5 bg-blue-400/80 rounded-full"></div><span className="text-xs font-bold text-slate-600">Jalur Rute</span></div>
+              <div className="bg-white/60 backdrop-blur-2xl p-5 rounded-[1.25rem] shadow-[0_8px_32px_rgba(0,0,0,0.1)] border border-white/60 w-48 origin-top-right transition-all duration-500 ease-out hidden sm:block">
+                <h4 className="text-[10px] font-black text-slate-500 mb-4 uppercase tracking-widest">Keterangan Peta</h4>
+                <div className="flex items-center gap-3 mb-3.5"><div className="w-3.5 h-3.5 rounded-full bg-blue-500 ring-4 ring-blue-500/20"></div><span className="text-xs font-bold text-slate-700">Lokasimu</span></div>
+                <div className="flex items-center gap-3 mb-3.5"><div className="w-4 h-4 rounded-md bg-blue-400 flex items-center justify-center shadow-sm"><Library size={10} color="white"/></div><span className="text-xs font-bold text-slate-700">Pusat Armada</span></div>
+                <div className="flex items-center gap-3 mb-3.5"><div className="w-4 h-4 rounded-full bg-teal-400 flex items-center justify-center shadow-sm"><MapPin size={10} color="white"/></div><span className="text-xs font-bold text-slate-700">Titik Pusling</span></div>
+                <div className="flex items-center gap-3"><div className="w-5 h-1.5 bg-blue-400/80 rounded-full"></div><span className="text-xs font-bold text-slate-700">Jalur Rute</span></div>
               </div>
             </div>
             
             {selectedLokasi && (
-              <div className="absolute bottom-6 left-4 right-4 md:left-1/2 md:right-auto md:-translate-x-1/2 md:w-[500px] bg-white/90 backdrop-blur-3xl p-5 sm:p-6 rounded-[2rem] shadow-2xl shadow-slate-300/60 z-[40] border border-white animate-in slide-in-from-bottom-10 fade-in duration-500 ease-out">
+              <div className="absolute bottom-6 left-4 right-4 md:left-1/2 md:right-auto md:-translate-x-1/2 md:w-[500px] bg-white/80 backdrop-blur-3xl p-5 sm:p-6 rounded-[2rem] shadow-[0_16px_40px_rgba(0,0,0,0.15)] z-[40] border border-white/70 animate-in slide-in-from-bottom-10 fade-in duration-500 ease-[cubic-bezier(0.25,0.8,0.25,1)]">
                 <div className="flex justify-between items-start mb-2">
                   <h3 className="font-black text-lg sm:text-xl text-slate-800 pr-8">{selectedLokasi.nama}</h3>
-                  <button onClick={clearRouteState} className="absolute top-5 right-5 sm:top-6 sm:right-6 bg-slate-50 border border-slate-100 p-2 rounded-full text-slate-400 hover:text-slate-700 hover:bg-slate-100 hover:scale-110 transition-all duration-300 ease-out"><X size={16}/></button>
+                  <button onClick={clearRouteState} className="absolute top-5 right-5 sm:top-6 sm:right-6 bg-white/50 border border-white p-2 rounded-full text-slate-500 hover:text-slate-800 hover:bg-white hover:scale-110 transition-all duration-300 ease-out shadow-sm"><X size={16}/></button>
                 </div>
-                <p className="text-slate-500 text-xs sm:text-sm mb-5 sm:mb-6 leading-relaxed font-medium">{selectedLokasi.deskripsi}</p>
+                <p className="text-slate-600 text-xs sm:text-sm mb-5 sm:mb-6 leading-relaxed font-medium">{selectedLokasi.deskripsi}</p>
                 
-                <div className="bg-slate-50/80 backdrop-blur-sm rounded-[1.25rem] p-4 sm:p-5 flex flex-col gap-4 border border-slate-100">
+                <div className="bg-slate-50/50 backdrop-blur-md rounded-[1.25rem] p-4 sm:p-5 flex flex-col gap-4 border border-white/60 shadow-inner">
                   <div className="flex flex-row gap-4">
-                    <div className="flex-1 flex flex-col justify-center border-r border-slate-200">
-                      <span className="text-slate-400 text-[10px] uppercase font-bold tracking-widest mb-1.5 flex items-center gap-1.5"><Navigation size={12} className="text-blue-400"/> Jarak Rute</span>
+                    <div className="flex-1 flex flex-col justify-center border-r border-slate-200/60">
+                      <span className="text-slate-500 text-[10px] uppercase font-bold tracking-widest mb-1.5 flex items-center gap-1.5"><Navigation size={12} className="text-blue-500"/> Jarak Rute</span>
                       <span className="font-black text-blue-600 text-lg sm:text-xl">{isLoadingRoute ? '...' : `${routeInfo?.distance || 0} KM`}</span>
                     </div>
                     <div className="flex-1 flex flex-col justify-center pl-2">
-                      <span className="text-slate-400 text-[10px] uppercase font-bold tracking-widest mb-1.5 flex items-center gap-1.5"><Truck size={12} className="text-teal-400"/> Estimasi Tiba</span>
+                      <span className="text-slate-500 text-[10px] uppercase font-bold tracking-widest mb-1.5 flex items-center gap-1.5"><Truck size={12} className="text-teal-500"/> Estimasi Tiba</span>
                       <span className="font-black text-teal-600 text-lg sm:text-xl">{isLoadingRoute ? '...' : `${routeInfo?.duration || 0} MNT`}</span>
                     </div>
                   </div>
@@ -791,9 +646,9 @@ export default function App() {
                   href={`https://www.google.com/maps/dir/?api=1&destination=${selectedLokasi.lat},${selectedLokasi.lng}${userLocation ? `&origin=${userLocation.lat},${userLocation.lng}` : ''}`} 
                   target="_blank" 
                   rel="noopener noreferrer" 
-                  className="mt-4 w-full bg-blue-50 hover:bg-blue-500 hover:text-white text-blue-600 border border-blue-100 px-4 py-3 sm:py-3.5 rounded-[1.25rem] text-xs sm:text-sm font-bold flex items-center justify-center gap-2.5 transition-all duration-500 ease-out shadow-sm hover:shadow-lg hover:shadow-blue-500/25 group"
+                  className="mt-4 w-full bg-blue-500/10 hover:bg-blue-500 hover:text-white text-blue-700 border border-blue-500/20 px-4 py-3 sm:py-3.5 rounded-[1.25rem] text-xs sm:text-sm font-bold flex items-center justify-center gap-2.5 transition-all duration-500 ease-[cubic-bezier(0.25,0.8,0.25,1)] shadow-sm hover:shadow-lg hover:shadow-blue-500/25 group"
                 >
-                  <ExternalLink size={18} className="group-hover:scale-110 transition-transform duration-300" /> Buka Navigasi di Google Maps
+                  <ExternalLink size={18} className="group-hover:scale-110 transition-transform duration-300" /> Buka Navigasi Google Maps
                 </a>
               </div>
             )}
@@ -883,7 +738,6 @@ export default function App() {
                     <p className="text-slate-500 text-[10px] sm:text-xs font-bold uppercase tracking-widest truncate max-w-[120px] sm:max-w-none">{session.user.email}</p>
                   </div>
                 </div>
-                {/* FIX MOBILE: Tombol "Ke Peta" sekarang nongol di HP (sebagai icon Map) */}
                 <div className="flex items-center gap-2 sm:gap-3">
                   <button onClick={() => setCurrentPage('home')} className="flex items-center justify-center gap-2 text-sm font-bold text-slate-600 bg-white hover:bg-slate-50 p-2 sm:px-5 sm:py-2.5 rounded-xl sm:rounded-2xl transition-all duration-300 border border-slate-200 shadow-sm hover:shadow-md">
                     <Map size={18} className="sm:hidden" />
@@ -1002,16 +856,22 @@ export default function App() {
                   <input required type="text" name="nama" value={formData.nama} onChange={handleFormChange} className="w-full bg-white border border-slate-200 rounded-[1.25rem] p-3.5 sm:p-4 text-sm font-semibold outline-none focus:border-blue-400 focus:ring-4 focus:ring-blue-500/10 transition-all duration-300 shadow-sm" placeholder="Misal: Alun-Alun Cirimekar"/>
                 </div>
                 
+                <div>
+                  <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 ml-1">Hari Operasional</label>
+                  <select name="hari" value={formData.hari} onChange={handleFormChange} className="w-full bg-white border border-slate-200 rounded-[1.25rem] p-3.5 sm:p-4 text-sm font-semibold outline-none focus:border-blue-400 focus:ring-4 focus:ring-blue-500/10 transition-all duration-300 shadow-sm cursor-pointer">
+                    {HARI_OPERASIONAL.filter(h => h !== 'Semua Hari').map(hari => <option key={hari} value={hari}>{hari}</option>)}
+                  </select>
+                </div>
+                
+                {/* FIX: Ubah Input Waktu dari Teks ke Time Picker */}
                 <div className="grid grid-cols-2 gap-4 sm:gap-5">
                   <div>
-                    <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 ml-1">Hari Operasional</label>
-                    <select name="hari" value={formData.hari} onChange={handleFormChange} className="w-full bg-white border border-slate-200 rounded-[1.25rem] p-3.5 sm:p-4 text-sm font-semibold outline-none focus:border-blue-400 focus:ring-4 focus:ring-blue-500/10 transition-all duration-300 shadow-sm">
-                      {HARI_OPERASIONAL.filter(h => h !== 'Semua Hari').map(hari => <option key={hari} value={hari}>{hari}</option>)}
-                    </select>
+                    <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 ml-1 flex items-center gap-1.5"><Clock size={12} /> Jam Mulai</label>
+                    <input required type="time" name="jamMulai" value={formData.jamMulai} onChange={handleFormChange} className="w-full bg-white border border-slate-200 rounded-[1.25rem] p-3.5 sm:p-4 text-sm font-semibold outline-none focus:border-blue-400 focus:ring-4 focus:ring-blue-500/10 transition-all duration-300 shadow-sm cursor-pointer"/>
                   </div>
                   <div>
-                    <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 ml-1">Jam Standby</label>
-                    <input required type="text" name="jam" value={formData.jam} onChange={handleFormChange} className="w-full bg-white border border-slate-200 rounded-[1.25rem] p-3.5 sm:p-4 text-sm font-semibold outline-none focus:border-blue-400 focus:ring-4 focus:ring-blue-500/10 transition-all duration-300 shadow-sm" placeholder="09:00 - 12:00"/>
+                    <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 ml-1 flex items-center gap-1.5"><Clock size={12} /> Jam Selesai</label>
+                    <input required type="time" name="jamSelesai" value={formData.jamSelesai} onChange={handleFormChange} className="w-full bg-white border border-slate-200 rounded-[1.25rem] p-3.5 sm:p-4 text-sm font-semibold outline-none focus:border-blue-400 focus:ring-4 focus:ring-blue-500/10 transition-all duration-300 shadow-sm cursor-pointer"/>
                   </div>
                 </div>
 
