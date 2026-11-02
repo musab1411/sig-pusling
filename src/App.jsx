@@ -267,6 +267,7 @@ export default function App() {
   }, []);
 
   useEffect(() => {
+    if (currentPage !== 'map') return;
     if (!isLeafletLoaded || !mapRef.current) return;
     if (!mapInstance.current) {
       const L = window.L;
@@ -285,9 +286,17 @@ export default function App() {
         .on('click', (e) => { if(e.originalEvent) e.originalEvent.stopPropagation(); if (window.innerWidth < 1024) setIsSidebarOpen(false); handleMarkerClick(PERPUSDA_BASE); });
     }
 
+    setTimeout(() => {
+      if (mapInstance.current) mapInstance.current.invalidateSize();
+    }, 250);
+
     const L = window.L;
-    markersRef.current.forEach(marker => mapInstance.current.removeLayer(marker));
-    markersRef.current = [];
+    if (markersRef.current) {
+      markersRef.current.forEach(marker => mapInstance.current.removeLayer(marker));
+      markersRef.current = [];
+    } else {
+      markersRef.current = [];
+    }
 
     const destIcon = L.divIcon({
       className: 'custom-icon transition-transform hover:scale-110',
@@ -301,7 +310,7 @@ export default function App() {
       });
       markersRef.current.push(marker);
     });
-  }, [isLeafletLoaded, lokasiData, filterHari]);
+  }, [isLeafletLoaded, currentPage, lokasiData, filterHari]);
 
   const sortedLokasiData = [...lokasiData.filter(loc => filterHari === 'Semua Hari' || loc.hari === filterHari)].sort((a, b) => {
     const todayNum = dayOrderMap[getTodayName()] || 1;
