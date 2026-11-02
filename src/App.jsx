@@ -272,7 +272,7 @@ export default function App() {
       const L = window.L;
       mapInstance.current = L.map(mapRef.current, { zoomControl: false }).setView([PERPUSDA_BASE.lat, PERPUSDA_BASE.lng], 13);
       L.control.zoom({ position: 'bottomright' }).addTo(mapInstance.current);
-      L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager_labels_under/{z}/{x}/{y}{r}.png', { attribution: '© OpenStreetMap' }).addTo(mapInstance.current);
+      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution: '© OpenStreetMap' }).addTo(mapInstance.current);
       mapInstance.current.on('click', clearRouteState);
 
       const baseIcon = L.divIcon({
@@ -322,7 +322,7 @@ export default function App() {
     const L = window.L;
     if (!adminMapInstance.current) {
       adminMapInstance.current = L.map(adminMapRef.current).setView([PERPUSDA_BASE.lat, PERPUSDA_BASE.lng], 12);
-      L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png').addTo(adminMapInstance.current);
+      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution: '© OpenStreetMap' }).addTo(adminMapInstance.current);
       adminMapInstance.current.on('click', (e) => { setModalMode('add'); setFormData({ id: '', nama: '', lat: parseFloat(e.latlng.lat).toFixed(5), lng: parseFloat(e.latlng.lng).toFixed(5), hari: 'Senin', jamMulai: '09:00', jamSelesai: '12:00', deskripsi: '' }); setIsModalOpen(true); });
     }
     adminMarkersRef.current.forEach(marker => adminMapInstance.current.removeLayer(marker));
@@ -367,7 +367,7 @@ export default function App() {
         if (isNaN(initialLat) || isNaN(initialLng)) { initialLat = PERPUSDA_BASE.lat; initialLng = PERPUSDA_BASE.lng; }
         if (!modalMapInstance.current) {
           modalMapInstance.current = L.map(modalMapRef.current).setView([initialLat, initialLng], 14);
-          L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png').addTo(modalMapInstance.current);
+          L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution: '© OpenStreetMap' }).addTo(modalMapInstance.current);
           const modalIcon = L.divIcon({
             className: 'custom-icon cursor-move',
             html: `<div style="background: #34d399; color: white; border-radius: 50%; width: 32px; height: 32px; display: flex; justify-content: center; align-items: center; box-shadow: 0 4px 10px rgba(0,0,0,0.1); border: 2.5px solid white;"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H20v20H6.5a2.5 2.5 0 0 1 0-5H20"/></svg></div>`,
@@ -440,7 +440,7 @@ export default function App() {
       
       {!isSupabaseConfigured && currentPage === 'admin' && session && (
         <div className="bg-gradient-to-r from-amber-400 to-orange-400 text-white text-center text-xs py-2 font-bold z-[6000] w-full absolute top-0 shadow-lg tracking-wide uppercase backdrop-blur-md">
-           🚧 Aplikasi Berjalan dalam Mode Simulasi. Masukkan Kredensial Supabase.
+            🚧 Aplikasi Berjalan dalam Mode Simulasi. Masukkan Kredensial Supabase.
         </div>
       )}
 
@@ -740,7 +740,6 @@ export default function App() {
                 </div>
                 <div className="flex items-center gap-2 sm:gap-3">
                   <button onClick={() => setCurrentPage('home')} className="flex items-center justify-center gap-2 text-sm font-bold text-slate-600 bg-white hover:bg-slate-50 p-2 sm:px-5 sm:py-2.5 rounded-xl sm:rounded-2xl transition-all duration-300 border border-slate-200 shadow-sm hover:shadow-md">
-                    <Map size={18} className="sm:hidden" />
                     <span className="hidden sm:flex items-center gap-2"><ChevronLeft size={16}/> Ke Peta</span>
                   </button>
                   <button onClick={handleLogout} className="flex items-center justify-center gap-2 text-sm font-bold text-rose-500 bg-rose-50 hover:bg-rose-500 hover:text-white p-2 sm:px-5 sm:py-2.5 rounded-xl sm:rounded-2xl transition-all duration-300 border border-rose-100 shadow-sm hover:shadow-md hover:shadow-rose-500/20">
