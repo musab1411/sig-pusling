@@ -734,7 +734,7 @@ export default function App() {
       {/* ========================================= */}
       {/* 1. LANDING PAGE                          */}
       {/* ========================================= */}
-      <div className={`flex-1 flex-col overflow-y-auto scroll-smooth ${currentPage === 'landing' ? 'flex' : 'hidden'}`}>
+      <div className={`flex-1 min-h-0 flex-col overflow-y-auto scroll-smooth ${currentPage === 'landing' ? 'flex' : 'hidden'}`}>
         <section className="min-h-[100dvh] relative flex flex-col items-center justify-center p-6 overflow-hidden bg-slate-50">
           <div className="absolute inset-0 overflow-hidden pointer-events-none">
             <div className="absolute -top-[20%] -left-[10%] w-[60vw] h-[60vw] rounded-full bg-blue-200/40 blur-[120px] mix-blend-multiply opacity-70 animate-pulse"></div>
@@ -1044,8 +1044,8 @@ export default function App() {
       {/* ========================================= */}
       {/* 3. CALENDAR PAGE                         */}
       {/* ========================================= */}
-      <div className={`flex-1 flex-col overflow-y-auto ${currentPage === 'calendar' ? 'flex' : 'hidden'}`}>
-        <section className="min-h-[100dvh] bg-slate-50 pt-24 sm:pt-28 pb-16 px-4 sm:px-6">
+      <div className={`flex-1 min-h-0 flex-col overflow-y-auto ${currentPage === 'calendar' ? 'flex' : 'hidden'}`}>
+        <section className="shrink-0 min-h-[100dvh] bg-slate-50 pt-24 sm:pt-28 pb-16 px-4 sm:px-6">
           <div className="max-w-7xl mx-auto">
             <div className="flex flex-col lg:flex-row lg:items-end lg:justify-between gap-5 mb-8">
               <div>
@@ -1169,8 +1169,8 @@ export default function App() {
       {/* ========================================= */}
       {/* 4. PERMOHONAN KUNJUNGAN PAGE             */}
       {/* ========================================= */}
-      <div className={`flex-1 flex-col overflow-y-auto ${currentPage === 'permohonan' ? 'flex' : 'hidden'}`}>
-        <section className="min-h-[100dvh] bg-slate-50 pt-24 sm:pt-28 pb-16 px-4 sm:px-6 relative overflow-hidden">
+      <div className={`flex-1 min-h-0 flex-col overflow-y-auto ${currentPage === 'permohonan' ? 'flex' : 'hidden'}`}>
+        <section className="shrink-0 min-h-[100dvh] bg-slate-50 pt-24 sm:pt-28 pb-16 px-4 sm:px-6 relative overflow-hidden">
           <div className="absolute top-0 left-0 w-[45vw] h-[45vw] bg-blue-100/50 blur-[120px] rounded-full pointer-events-none"></div>
           <div className="absolute bottom-0 right-0 w-[40vw] h-[40vw] bg-teal-100/50 blur-[120px] rounded-full pointer-events-none"></div>
           <div className="max-w-6xl mx-auto relative z-10">
@@ -1316,7 +1316,7 @@ export default function App() {
       {/* ========================================= */}
       {/* 5. ADMIN PAGE                            */}
       {/* ========================================= */}
-      <div className={`flex-1 flex-col overflow-y-auto ${currentPage === 'admin' ? 'flex' : 'hidden'} ${!isSupabaseConfigured && session ? 'mt-8' : ''}`}>
+      <div className={`flex-1 min-h-0 flex-col overflow-y-auto ${currentPage === 'admin' ? 'flex' : 'hidden'} ${!isSupabaseConfigured && session ? 'mt-8' : ''}`}>
         {!session ? (
           <div className="min-h-[100dvh] bg-slate-50 flex flex-col items-center justify-center p-6 relative overflow-hidden">
             <div className="absolute top-[-10%] left-[-10%] w-[50vw] h-[50vw] bg-blue-200/50 blur-[120px] rounded-full pointer-events-none mix-blend-multiply opacity-60"></div>
