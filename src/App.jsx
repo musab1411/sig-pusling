@@ -1,9 +1,10 @@
 /* eslint-disable */
 import React, { useState, useEffect, useRef } from 'react';
-import { Map, MapPin, Navigation, Calendar, Clock, Plus, Trash2, Library, Truck, Info, Settings, X, ChevronLeft, Menu, ArrowDown, CalendarCheck, MousePointerClick, LogIn, LogOut, Compass, Loader2, Lock, Mail, KeyRound, ShieldCheck, ExternalLink, BookOpen, Globe, Building2, MapPinned, Info as InfoIcon } from 'lucide-react';
+import { Map, MapPin, Navigation, Calendar, Clock, Plus, Trash2, Library, Truck, Info, Settings, X, ChevronLeft, Menu, ArrowDown, CalendarCheck, MousePointerClick, LogIn, LogOut, Compass, Loader2, Lock, Mail, KeyRound, ShieldCheck, ExternalLink, BookOpen, Globe, Building2, MapPinned, Info as InfoIcon, Phone, MessageCircle, Send, Camera, PlayCircle, ThumbsUp, AtSign, Home, CalendarDays, Users, School, FileText, Inbox, ClipboardList, CheckCircle2, CircleCheck, CircleX, RefreshCw, ArrowRight, AlertCircle, Database, User } from 'lucide-react';
 
 import { createClient } from '@supabase/supabase-js';
 import perpusnasLogo from './assets/logo-perpusnas.png';
+import { KONTAK_LAYANAN } from './config';
 
 // ==========================================
 // 🔴 KONFIGURASI SUPABASE DATABASE
@@ -41,6 +42,59 @@ const getTodayName = () => {
   return days[new Date().getDay()];
 };
 
+// --- KALENDER & PERMOHONAN ---
+const NAMA_HARI = ['Minggu', 'Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu'];
+const NAMA_BULAN = ['Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni', 'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'];
+const JENIS_PEMOHON = ['Sekolah', 'Masyarakat Umum', 'Instansi/Organisasi'];
+const STATUS_PERMOHONAN = {
+  menunggu: { label: 'Menunggu', badge: 'bg-amber-50 text-amber-700 border-amber-200', dot: 'bg-amber-500' },
+  disetujui: { label: 'Disetujui', badge: 'bg-teal-50 text-teal-700 border-teal-200', dot: 'bg-teal-500' },
+  ditolak: { label: 'Ditolak', badge: 'bg-rose-50 text-rose-700 border-rose-200', dot: 'bg-rose-500' },
+};
+const LOCAL_PERMOHONAN_KEY = 'pusling_permohonan_lokal';
+
+const pad2 = (value) => String(value).padStart(2, '0');
+const toDateKey = (date) => `${date.getFullYear()}-${pad2(date.getMonth() + 1)}-${pad2(date.getDate())}`;
+const formatTanggalID = (value, options = {}) => {
+  if (!value) return '-';
+  const raw = value instanceof Date ? value : new Date(String(value).length <= 10 ? `${value}T00:00:00` : value);
+  if (Number.isNaN(raw.getTime())) return String(value);
+  return new Intl.DateTimeFormat('id-ID', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric', ...options }).format(raw);
+};
+const parseTimeMinutes = (value) => {
+  const match = String(value || '').match(/(\d{1,2})[.:](\d{2})/);
+  return match ? Number(match[1]) * 60 + Number(match[2]) : 0;
+};
+const getStatusMeta = (status) => STATUS_PERMOHONAN[status] || STATUS_PERMOHONAN.menunggu;
+const getWhatsAppLink = (number) => {
+  const digits = String(number || '').replace(/\D/g, '').replace(/^0/, '62');
+  return digits ? `https://wa.me/${digits}` : '#';
+};
+const getPhoneLink = (number) => `tel:${String(number || '').replace(/[^\d+]/g, '')}`;
+const getLocalPermohonan = () => {
+  try {
+    const parsed = JSON.parse(localStorage.getItem(LOCAL_PERMOHONAN_KEY) || '[]');
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+};
+const saveLocalPermohonan = (items) => {
+  try { localStorage.setItem(LOCAL_PERMOHONAN_KEY, JSON.stringify(items)); } catch { /* abaikan */ }
+};
+const createEmptyPermohonan = () => ({
+  jenis_pemohon: 'Sekolah',
+  nama_pemohon: '',
+  instansi: '',
+  kontak: '',
+  alamat_lokasi: '',
+  tanggal_kunjungan: '',
+  jam_kunjungan: '09:00',
+  jumlah_peserta: '',
+  keperluan: '',
+  setuju: false,
+});
+
 const AppLogo = ({ className = "w-10 h-10" }) => (
   <div className={`flex items-center justify-center rounded-2xl bg-white shadow-xl shadow-blue-500/20 border-2 border-white shrink-0 overflow-hidden transition-all duration-500 hover:scale-110 hover:-translate-y-1 ${className}`}>
     <img src={perpusnasLogo} alt="Logo Perpusnas" className="h-full w-full object-contain" />
@@ -52,7 +106,7 @@ export default function App() {
   const [currentPage, _setCurrentPage] = useState(() => {
     const saved = localStorage.getItem('pusling_current_page');
     if (saved === 'home') return 'landing';
-    return saved || 'landing';
+    return ['landing', 'map', 'admin', 'calendar', 'permohonan'].includes(saved) ? saved : 'landing';
   });
   const setCurrentPage = (page) => {
     localStorage.setItem('pusling_current_page', page);
@@ -89,6 +143,22 @@ export default function App() {
   const [modalMode, setModalMode] = useState('add'); 
   const [formData, setFormData] = useState({ id: '', nama: '', lat: '', lng: '', hari: 'Senin', jamMulai: '', jamSelesai: '', deskripsi: '' });
   const [isSaving, setIsSaving] = useState(false);
+
+  // --- FITUR KALENDER & PERMOHONAN KUNJUNGAN ---
+  const [calendarMonth, setCalendarMonth] = useState(() => {
+    const now = new Date();
+    return new Date(now.getFullYear(), now.getMonth(), 1);
+  });
+  const [selectedCalendarDate, setSelectedCalendarDate] = useState(() => new Date());
+  const [permohonanTerjadwal, setPermohonanTerjadwal] = useState([]);
+  const [permohonanAdmin, setPermohonanAdmin] = useState([]);
+  const [isPermohonanLoading, setIsPermohonanLoading] = useState(false);
+  const [permohonanDbReady, setPermohonanDbReady] = useState(true);
+  const [permohonanForm, setPermohonanForm] = useState(createEmptyPermohonan());
+  const [isSubmittingPermohonan, setIsSubmittingPermohonan] = useState(false);
+  const [permohonanSuccess, setPermohonanSuccess] = useState(null);
+  const [adminTab, setAdminTab] = useState('jadwal');
+  const [permohonanFilter, setPermohonanFilter] = useState('semua');
 
   const mapRef = useRef(null);
   const mapInstance = useRef(null);
@@ -185,6 +255,50 @@ export default function App() {
     };
     fetchData();
   }, []);
+
+  const refreshPublicAgenda = async () => {
+    if (!isSupabaseConfigured) return;
+    try {
+      const { data, error } = await supabase
+        .from('permohonan_terjadwal')
+        .select('*')
+        .order('tanggal_kunjungan', { ascending: true });
+      if (!error) setPermohonanTerjadwal(data || []);
+    } catch {
+      // View belum dibuat / offline: kalender tetap menampilkan jadwal rutin.
+    }
+  };
+
+  const refreshPermohonanAdmin = async () => {
+    if (!isSupabaseConfigured) {
+      setPermohonanAdmin(getLocalPermohonan());
+      setPermohonanDbReady(true);
+      return;
+    }
+    setIsPermohonanLoading(true);
+    try {
+      const { data, error } = await supabase
+        .from('permohonan_kunjungan')
+        .select('*')
+        .order('created_at', { ascending: false });
+      if (error) throw error;
+      setPermohonanAdmin(data || []);
+      setPermohonanDbReady(true);
+    } catch {
+      setPermohonanAdmin(getLocalPermohonan());
+      setPermohonanDbReady(false);
+    } finally {
+      setIsPermohonanLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    refreshPublicAgenda();
+  }, []);
+
+  useEffect(() => {
+    if (session) refreshPermohonanAdmin();
+  }, [session]);
 
   const handleSaveData = async (e) => {
     e.preventDefault(); setIsSaving(true);
@@ -439,6 +553,150 @@ export default function App() {
   };
   const handleFormChange = (e) => { const { name, value } = e.target; setFormData(prev => ({ ...prev, [name]: value })); };
 
+  const goToKontak = () => {
+    setCurrentPage('landing');
+    setTimeout(() => document.getElementById('kontak-section')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 150);
+  };
+
+  const openLocationOnMap = (loc) => {
+    setSelectedLokasi(loc);
+    setCurrentPage('map');
+    setTimeout(() => { if (mapInstance.current) handleMarkerClick(loc); }, 700);
+  };
+
+  const getEventsForDate = (date) => {
+    if (!date) return [];
+    const dateKey = toDateKey(date);
+    const dayName = NAMA_HARI[date.getDay()];
+    const jadwalRutin = lokasiData
+      .filter((loc) => loc.hari === dayName)
+      .map((loc) => ({
+        key: `lokasi-${loc.id}`,
+        type: 'pusling',
+        title: loc.nama,
+        time: loc.jam || '-',
+        description: loc.deskripsi || '',
+        loc,
+      }));
+    const kunjungan = permohonanTerjadwal
+      .filter((item) => item.tanggal_kunjungan === dateKey)
+      .map((item) => ({
+        key: `permohonan-${item.id}`,
+        type: 'kunjungan',
+        title: item.instansi || item.nama_pemohon,
+        time: item.jam_kunjungan || '-',
+        description: item.keperluan || 'Kunjungan Perpustakaan Keliling',
+        alamat: item.alamat_lokasi,
+        peserta: item.jumlah_peserta,
+      }));
+    return [...jadwalRutin, ...kunjungan].sort((a, b) => parseTimeMinutes(a.time) - parseTimeMinutes(b.time));
+  };
+
+  const handleAjukanDariKalender = (event) => {
+    setPermohonanForm({
+      ...createEmptyPermohonan(),
+      alamat_lokasi: event.loc ? event.loc.nama : (event.alamat || ''),
+      tanggal_kunjungan: toDateKey(selectedCalendarDate),
+      keperluan: event.type === 'pusling' ? `Permohonan kunjungan Perpustakaan Keliling di ${event.title}` : '',
+    });
+    setPermohonanSuccess(null);
+    setCurrentPage('permohonan');
+    setTimeout(() => window.scrollTo({ top: 0, behavior: 'smooth' }), 50);
+  };
+
+  const handlePermohonanChange = (e) => {
+    const { name, value, type, checked } = e.target;
+    setPermohonanForm((prev) => ({ ...prev, [name]: type === 'checkbox' ? checked : value }));
+  };
+
+  const handleSubmitPermohonan = async (e) => {
+    e.preventDefault();
+    if (!permohonanForm.setuju) { showToast('Centang pernyataan persetujuan terlebih dahulu.', 'error'); return; }
+    setIsSubmittingPermohonan(true);
+    const payload = {
+      jenis_pemohon: permohonanForm.jenis_pemohon,
+      nama_pemohon: permohonanForm.nama_pemohon.trim(),
+      instansi: permohonanForm.instansi.trim() || null,
+      kontak: permohonanForm.kontak.trim(),
+      alamat_lokasi: permohonanForm.alamat_lokasi.trim(),
+      tanggal_kunjungan: permohonanForm.tanggal_kunjungan,
+      jam_kunjungan: permohonanForm.jam_kunjungan,
+      jumlah_peserta: Number.parseInt(permohonanForm.jumlah_peserta, 10) || 1,
+      keperluan: permohonanForm.keperluan.trim() || null,
+      status: 'menunggu',
+    };
+    const localRecord = {
+      ...payload,
+      id: `lokal-${Date.now()}`,
+      created_at: new Date().toISOString(),
+      local: true,
+    };
+    let saved = localRecord;
+    if (isSupabaseConfigured) {
+      try {
+        const { error } = await supabase.from('permohonan_kunjungan').insert([payload]);
+        if (error) throw error;
+        saved = { ...payload, id: `remote-${Date.now()}`, created_at: new Date().toISOString(), local: false };
+        showToast('Permohonan kunjungan berhasil dikirim.', 'success');
+      } catch {
+        saveLocalPermohonan([localRecord, ...getLocalPermohonan()]);
+        showToast('Permohonan tersimpan lokal. Tabel database belum siap.', 'error');
+      }
+    } else {
+      saveLocalPermohonan([localRecord, ...getLocalPermohonan()]);
+    }
+    setPermohonanSuccess(saved);
+    setPermohonanForm(createEmptyPermohonan());
+    setIsSubmittingPermohonan(false);
+    if (session) refreshPermohonanAdmin();
+  };
+
+  const handleUpdatePermohonanStatus = (item, status) => {
+    const label = status === 'disetujui' ? 'menyetujui' : status === 'ditolak' ? 'menolak' : 'mengubah';
+    setConfirmDialog({
+      message: `Yakin ${label} permohonan dari "${item.instansi || item.nama_pemohon}"?`,
+      onConfirm: async () => {
+        setConfirmDialog(null);
+        if (item.local || !isSupabaseConfigured) {
+          const updated = getLocalPermohonan().map((row) => row.id === item.id ? { ...row, status } : row);
+          saveLocalPermohonan(updated);
+          setPermohonanAdmin((prev) => prev.map((row) => row.id === item.id ? { ...row, status } : row));
+          showToast(`Permohonan ditandai ${status}.`, 'success');
+          return;
+        }
+        try {
+          const { error } = await supabase.from('permohonan_kunjungan').update({ status }).eq('id', item.id);
+          if (error) throw error;
+          setPermohonanAdmin((prev) => prev.map((row) => row.id === item.id ? { ...row, status } : row));
+          showToast(`Permohonan ${status}.`, 'success');
+          refreshPublicAgenda();
+        } catch (error) {
+          showToast(`Gagal update permohonan: ${error.message}`, 'error');
+        }
+      },
+      onCancel: () => setConfirmDialog(null),
+    });
+  };
+
+  const permohonanCounts = permohonanAdmin.reduce((acc, item) => {
+    acc.total += 1;
+    acc[item.status] = (acc[item.status] || 0) + 1;
+    return acc;
+  }, { total: 0, menunggu: 0, disetujui: 0, ditolak: 0 });
+  const filteredPermohonan = permohonanAdmin.filter((item) => permohonanFilter === 'semua' || item.status === permohonanFilter);
+
+  const calendarYear = calendarMonth.getFullYear();
+  const calendarMonthIndex = calendarMonth.getMonth();
+  const calendarStartOffset = (new Date(calendarYear, calendarMonthIndex, 1).getDay() + 6) % 7;
+  const calendarDaysInMonth = new Date(calendarYear, calendarMonthIndex + 1, 0).getDate();
+  const calendarCells = [
+    ...Array(calendarStartOffset).fill(null),
+    ...Array.from({ length: calendarDaysInMonth }, (_, index) => new Date(calendarYear, calendarMonthIndex, index + 1)),
+  ];
+  const selectedDateKey = toDateKey(selectedCalendarDate);
+  const todayKey = toDateKey(new Date());
+  const selectedDateEvents = getEventsForDate(selectedCalendarDate);
+
   if (!isLeafletLoaded && (currentPage === 'map' || currentPage === 'admin')) return <div className="flex h-[100dvh] items-center justify-center bg-slate-50 text-blue-500 font-semibold tracking-wide">Memuat Sistem Spasial...</div>;
 
   return (
@@ -451,7 +709,7 @@ export default function App() {
       )}
 
       {/* NAVBAR */}
-      {(currentPage === 'landing' || currentPage === 'map') && (
+      {(currentPage === 'landing' || currentPage === 'map' || currentPage === 'calendar' || currentPage === 'permohonan') && (
         <nav className="absolute top-0 left-0 right-0 z-[100] px-4 sm:px-6 py-4">
           <div className="max-w-7xl mx-auto flex items-center justify-between bg-white/60 backdrop-blur-2xl border border-white/70 rounded-full px-4 sm:px-6 py-2.5 shadow-lg shadow-slate-200/40">
             <button onClick={() => setCurrentPage('landing')} className="flex items-center gap-2.5">
@@ -462,9 +720,12 @@ export default function App() {
               </div>
             </button>
             <div className="flex items-center gap-1 sm:gap-2">
-              <button onClick={() => setCurrentPage('landing')} className={`px-3 sm:px-4 py-2 rounded-full text-xs sm:text-sm font-bold transition-all ${currentPage === 'landing' ? 'bg-blue-500 text-white shadow-md shadow-blue-500/20' : 'text-slate-600 hover:bg-white/80'}`}>Beranda</button>
-              <button onClick={() => setCurrentPage('map')} className={`px-3 sm:px-4 py-2 rounded-full text-xs sm:text-sm font-bold transition-all ${currentPage === 'map' ? 'bg-blue-500 text-white shadow-md shadow-blue-500/20' : 'text-slate-600 hover:bg-white/80'}`}>Peta Pusling</button>
-              <button onClick={() => setCurrentPage('admin')} className="px-3 sm:px-4 py-2 rounded-full text-xs sm:text-sm font-bold text-slate-600 hover:bg-white/80 flex items-center gap-1.5"><LogIn size={14}/> {session ? 'Dashboard' : 'Login'}</button>
+              <button onClick={() => setCurrentPage('landing')} title="Beranda" className={`px-2.5 sm:px-4 py-2 rounded-full text-xs sm:text-sm font-bold transition-all flex items-center gap-1.5 ${currentPage === 'landing' ? 'bg-blue-500 text-white shadow-md shadow-blue-500/20' : 'text-slate-600 hover:bg-white/80'}`}><Home size={15}/> <span className="hidden sm:inline">Beranda</span></button>
+              <button onClick={() => setCurrentPage('map')} title="Peta Pusling" className={`px-2.5 sm:px-4 py-2 rounded-full text-xs sm:text-sm font-bold transition-all flex items-center gap-1.5 ${currentPage === 'map' ? 'bg-blue-500 text-white shadow-md shadow-blue-500/20' : 'text-slate-600 hover:bg-white/80'}`}><Map size={15}/> <span className="hidden sm:inline">Peta</span></button>
+              <button onClick={() => setCurrentPage('calendar')} title="Kalender Aktivitas" className={`px-2.5 sm:px-4 py-2 rounded-full text-xs sm:text-sm font-bold transition-all flex items-center gap-1.5 ${currentPage === 'calendar' ? 'bg-blue-500 text-white shadow-md shadow-blue-500/20' : 'text-slate-600 hover:bg-white/80'}`}><CalendarDays size={15}/> <span className="hidden sm:inline">Kalender</span></button>
+              <button onClick={() => setCurrentPage('permohonan')} title="Permohonan Kunjungan" className={`px-2.5 sm:px-4 py-2 rounded-full text-xs sm:text-sm font-bold transition-all flex items-center gap-1.5 ${currentPage === 'permohonan' ? 'bg-blue-500 text-white shadow-md shadow-blue-500/20' : 'text-slate-600 hover:bg-white/80'}`}><Send size={15}/> <span className="hidden sm:inline">Permohonan</span></button>
+              <button onClick={goToKontak} title="Kontak Layanan" className="px-2.5 sm:px-4 py-2 rounded-full text-xs sm:text-sm font-bold text-slate-600 hover:bg-white/80 flex items-center gap-1.5"><Phone size={15}/> <span className="hidden sm:inline">Kontak</span></button>
+              <button onClick={() => setCurrentPage('admin')} title={session ? 'Dashboard' : 'Login'} className="px-2.5 sm:px-4 py-2 rounded-full text-xs sm:text-sm font-bold text-slate-600 hover:bg-white/80 flex items-center gap-1.5"><LogIn size={15}/> <span className="hidden sm:inline">{session ? 'Dashboard' : 'Login'}</span></button>
             </div>
           </div>
         </nav>
@@ -554,13 +815,98 @@ export default function App() {
           </div>
         </section>
 
+        <section id="kontak-section" className="py-20 px-6 bg-white scroll-mt-20">
+          <div className="max-w-7xl mx-auto">
+            <div className="text-center mb-14">
+              <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-teal-50 border border-teal-100 text-teal-700 text-xs font-bold uppercase tracking-widest mb-5">
+                <Phone size={14} /> Layanan & Kontak
+              </div>
+              <h2 className="text-3xl sm:text-4xl md:text-5xl font-black text-slate-800 mb-4">Hubungi Layanan Perpustakaan</h2>
+              <p className="text-slate-500 text-lg max-w-2xl mx-auto">Butuh informasi jadwal, ingin berkolaborasi, atau mengajukan kunjungan Perpustakaan Keliling? Hubungi kami melalui kanal berikut.</p>
+            </div>
+
+            <div className="grid lg:grid-cols-[1.05fr_1fr] gap-6 lg:gap-8">
+              <div className="relative overflow-hidden rounded-[2.5rem] bg-gradient-to-br from-blue-600 via-blue-500 to-teal-500 p-7 sm:p-10 text-white shadow-2xl shadow-blue-500/25">
+                <div className="absolute -top-16 -right-16 w-56 h-56 rounded-full bg-white/10 blur-2xl"></div>
+                <div className="absolute -bottom-20 -left-10 w-64 h-64 rounded-full bg-teal-300/20 blur-3xl"></div>
+                <div className="relative">
+                  <div className="w-14 h-14 rounded-2xl bg-white/20 backdrop-blur-md flex items-center justify-center mb-6 border border-white/30">
+                    <Library size={28} />
+                  </div>
+                  <h3 className="text-2xl sm:text-3xl font-black mb-3">Perpusda Kabupaten Bogor</h3>
+                  <p className="text-blue-50/90 text-sm sm:text-base leading-relaxed mb-8">{KONTAK_LAYANAN.alamat}</p>
+
+                  <div className="space-y-4">
+                    <div className="flex items-start gap-3">
+                      <div className="bg-white/15 p-2.5 rounded-xl border border-white/20 shrink-0"><Clock size={18} /></div>
+                      <div>
+                        <p className="text-[10px] uppercase tracking-widest font-bold text-blue-100/80">Jam Layanan</p>
+                        <p className="text-sm font-bold">{KONTAK_LAYANAN.jamLayanan}</p>
+                      </div>
+                    </div>
+                    <div className="flex items-start gap-3">
+                      <div className="bg-white/15 p-2.5 rounded-xl border border-white/20 shrink-0"><User size={18} /></div>
+                      <div>
+                        <p className="text-[10px] uppercase tracking-widest font-bold text-blue-100/80">PIC Layanan</p>
+                        <p className="text-sm font-bold">{KONTAK_LAYANAN.pic}</p>
+                      </div>
+                    </div>
+                  </div>
+
+                  <button onClick={() => setCurrentPage('permohonan')} className="mt-8 w-full sm:w-auto bg-white text-blue-700 px-6 py-3.5 rounded-2xl text-sm font-black flex items-center justify-center gap-2 shadow-lg hover:-translate-y-0.5 hover:shadow-xl transition-all">
+                    <Send size={17} /> Ajukan Permohonan Kunjungan <ArrowRight size={16} />
+                  </button>
+                </div>
+              </div>
+
+              <div className="grid sm:grid-cols-2 gap-4">
+                <a href={getWhatsAppLink(KONTAK_LAYANAN.whatsapp)} target="_blank" rel="noopener noreferrer" className="group bg-gradient-to-br from-teal-50 to-emerald-50 border border-teal-100 rounded-[1.75rem] p-5 sm:p-6 hover:shadow-xl hover:shadow-teal-500/10 hover:-translate-y-1 transition-all">
+                  <div className="w-11 h-11 rounded-xl bg-teal-500 text-white flex items-center justify-center mb-4 shadow-lg shadow-teal-500/25 group-hover:scale-110 transition-transform"><MessageCircle size={20} /></div>
+                  <p className="text-[10px] font-black uppercase tracking-widest text-teal-700/70 mb-1">WhatsApp</p>
+                  <p className="text-sm font-black text-slate-800 break-words">{KONTAK_LAYANAN.whatsapp}</p>
+                </a>
+                <a href={getPhoneLink(KONTAK_LAYANAN.telepon)} className="group bg-gradient-to-br from-blue-50 to-indigo-50 border border-blue-100 rounded-[1.75rem] p-5 sm:p-6 hover:shadow-xl hover:shadow-blue-500/10 hover:-translate-y-1 transition-all">
+                  <div className="w-11 h-11 rounded-xl bg-blue-500 text-white flex items-center justify-center mb-4 shadow-lg shadow-blue-500/25 group-hover:scale-110 transition-transform"><Phone size={20} /></div>
+                  <p className="text-[10px] font-black uppercase tracking-widest text-blue-700/70 mb-1">Telepon</p>
+                  <p className="text-sm font-black text-slate-800 break-words">{KONTAK_LAYANAN.telepon}</p>
+                </a>
+                <a href={`mailto:${KONTAK_LAYANAN.email}`} className="group bg-gradient-to-br from-amber-50 to-orange-50 border border-amber-100 rounded-[1.75rem] p-5 sm:p-6 hover:shadow-xl hover:shadow-amber-500/10 hover:-translate-y-1 transition-all">
+                  <div className="w-11 h-11 rounded-xl bg-amber-500 text-white flex items-center justify-center mb-4 shadow-lg shadow-amber-500/25 group-hover:scale-110 transition-transform"><Mail size={20} /></div>
+                  <p className="text-[10px] font-black uppercase tracking-widest text-amber-700/70 mb-1">Email</p>
+                  <p className="text-xs sm:text-sm font-black text-slate-800 break-all">{KONTAK_LAYANAN.email}</p>
+                </a>
+                <a href={`https://instagram.com/${String(KONTAK_LAYANAN.instagram).replace(/^@/, '')}`} target="_blank" rel="noopener noreferrer" className="group bg-gradient-to-br from-rose-50 to-pink-50 border border-rose-100 rounded-[1.75rem] p-5 sm:p-6 hover:shadow-xl hover:shadow-rose-500/10 hover:-translate-y-1 transition-all">
+                  <div className="w-11 h-11 rounded-xl bg-gradient-to-br from-rose-500 to-pink-500 text-white flex items-center justify-center mb-4 shadow-lg shadow-rose-500/25 group-hover:scale-110 transition-transform"><Camera size={20} /></div>
+                  <p className="text-[10px] font-black uppercase tracking-widest text-rose-700/70 mb-1">Instagram</p>
+                  <p className="text-sm font-black text-slate-800 break-words">{KONTAK_LAYANAN.instagram}</p>
+                </a>
+                <a href={`https://facebook.com/${encodeURIComponent(KONTAK_LAYANAN.facebook)}`} target="_blank" rel="noopener noreferrer" className="group bg-gradient-to-br from-sky-50 to-blue-50 border border-sky-100 rounded-[1.75rem] p-5 sm:p-6 hover:shadow-xl hover:shadow-sky-500/10 hover:-translate-y-1 transition-all">
+                  <div className="w-11 h-11 rounded-xl bg-sky-500 text-white flex items-center justify-center mb-4 shadow-lg shadow-sky-500/25 group-hover:scale-110 transition-transform"><ThumbsUp size={20} /></div>
+                  <p className="text-[10px] font-black uppercase tracking-widest text-sky-700/70 mb-1">Facebook</p>
+                  <p className="text-sm font-black text-slate-800 break-words">{KONTAK_LAYANAN.facebook}</p>
+                </a>
+                <a href={`https://youtube.com/${String(KONTAK_LAYANAN.youtube).startsWith('@') ? KONTAK_LAYANAN.youtube : `@${KONTAK_LAYANAN.youtube}`}`} target="_blank" rel="noopener noreferrer" className="group bg-gradient-to-br from-red-50 to-rose-50 border border-red-100 rounded-[1.75rem] p-5 sm:p-6 hover:shadow-xl hover:shadow-red-500/10 hover:-translate-y-1 transition-all">
+                  <div className="w-11 h-11 rounded-xl bg-red-500 text-white flex items-center justify-center mb-4 shadow-lg shadow-red-500/25 group-hover:scale-110 transition-transform"><PlayCircle size={20} /></div>
+                  <p className="text-[10px] font-black uppercase tracking-widest text-red-700/70 mb-1">YouTube</p>
+                  <p className="text-sm font-black text-slate-800 break-words">{KONTAK_LAYANAN.youtube}</p>
+                </a>
+              </div>
+            </div>
+          </div>
+        </section>
+
         <section className="py-20 px-6 bg-gradient-to-br from-slate-50 to-blue-50">
           <div className="max-w-4xl mx-auto text-center">
             <h2 className="text-3xl sm:text-4xl md:text-5xl font-black text-slate-800 mb-6">Siap Menemukan Armada Pusling?</h2>
             <p className="text-slate-500 text-lg mb-10">Cek jadwal dan lokasi Perpustakaan Keliling terdekat dari posisi Anda sekarang</p>
-            <button onClick={() => setCurrentPage('map')} className="group bg-gradient-to-r from-blue-500 to-indigo-500 text-white px-10 py-5 rounded-full text-lg font-bold flex items-center gap-3 shadow-2xl shadow-blue-500/40 hover:shadow-blue-500/60 hover:-translate-y-1 transition-all duration-300 mx-auto">
-              <MapPinned size={24}/> Buka Peta Interaktif <ChevronLeft size={20} className="rotate-180 group-hover:translate-x-1 transition-transform"/>
-            </button>
+            <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
+              <button onClick={() => setCurrentPage('map')} className="group bg-gradient-to-r from-blue-500 to-indigo-500 text-white px-8 py-4 rounded-full text-base sm:text-lg font-bold flex items-center gap-3 shadow-2xl shadow-blue-500/40 hover:shadow-blue-500/60 hover:-translate-y-1 transition-all duration-300">
+                <MapPinned size={22}/> Buka Peta Interaktif <ChevronLeft size={18} className="rotate-180 group-hover:translate-x-1 transition-transform"/>
+              </button>
+              <button onClick={() => setCurrentPage('calendar')} className="group bg-white text-slate-700 px-8 py-4 rounded-full text-base sm:text-lg font-bold border border-white flex items-center gap-3 shadow-xl hover:shadow-2xl hover:-translate-y-1 transition-all duration-300">
+                <CalendarDays size={20}/> Lihat Kalender <ArrowRight size={18} className="group-hover:translate-x-1 transition-transform"/>
+              </button>
+            </div>
           </div>
         </section>
 
@@ -696,7 +1042,279 @@ export default function App() {
       </div>
 
       {/* ========================================= */}
-      {/* 3. ADMIN PAGE                            */}
+      {/* 3. CALENDAR PAGE                         */}
+      {/* ========================================= */}
+      <div className={`flex-1 flex-col overflow-y-auto ${currentPage === 'calendar' ? 'flex' : 'hidden'}`}>
+        <section className="min-h-[100dvh] bg-slate-50 pt-24 sm:pt-28 pb-16 px-4 sm:px-6">
+          <div className="max-w-7xl mx-auto">
+            <div className="flex flex-col lg:flex-row lg:items-end lg:justify-between gap-5 mb-8">
+              <div>
+                <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-blue-50 border border-blue-100 text-blue-700 text-[10px] sm:text-xs font-black uppercase tracking-widest mb-4">
+                  <CalendarDays size={14} /> Kalender Aktivitas
+                </div>
+                <h1 className="text-3xl sm:text-4xl md:text-5xl font-black text-slate-800 tracking-tight mb-3">Jadwal Perpustakaan Keliling</h1>
+                <p className="text-slate-500 text-sm sm:text-base max-w-2xl font-medium">Kalender otomatis mengikuti jadwal rutin dan permohonan kunjungan yang sudah disetujui admin, sehingga informasi selalu terbaru.</p>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="inline-flex items-center gap-2 bg-white/80 border border-white px-4 py-2.5 rounded-full text-[11px] font-bold text-slate-600 shadow-sm">
+                  <span className="relative flex h-2 w-2"><span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-teal-400 opacity-75"></span><span className="relative inline-flex rounded-full h-2 w-2 bg-teal-500"></span></span>
+                  {isSupabaseConfigured ? 'Data live dari database' : 'Mode simulasi'}
+                </span>
+              </div>
+            </div>
+
+            <div className="grid lg:grid-cols-[1.55fr_1fr] gap-5 sm:gap-8 items-start">
+              <div className="bg-white/85 backdrop-blur-xl rounded-[1.75rem] sm:rounded-[2.25rem] border border-white shadow-xl shadow-slate-200/50 p-4 sm:p-6">
+                <div className="flex items-center justify-between gap-3 mb-5">
+                  <button onClick={() => { const next = new Date(calendarYear, calendarMonthIndex - 1, 1); setCalendarMonth(next); setSelectedCalendarDate(next); }} className="p-2.5 sm:p-3 rounded-xl bg-slate-50 border border-slate-100 text-slate-500 hover:text-blue-600 hover:bg-blue-50 transition-all" title="Bulan sebelumnya"><ChevronLeft size={18} /></button>
+                  <div className="text-center">
+                    <h2 className="text-lg sm:text-2xl font-black text-slate-800">{NAMA_BULAN[calendarMonthIndex]} {calendarYear}</h2>
+                    <button onClick={() => { const now = new Date(); setCalendarMonth(new Date(now.getFullYear(), now.getMonth(), 1)); setSelectedCalendarDate(now); }} className="text-[10px] sm:text-xs font-bold text-blue-600 hover:text-blue-700 uppercase tracking-widest">Kembali ke hari ini</button>
+                  </div>
+                  <button onClick={() => { const next = new Date(calendarYear, calendarMonthIndex + 1, 1); setCalendarMonth(next); setSelectedCalendarDate(next); }} className="p-2.5 sm:p-3 rounded-xl bg-slate-50 border border-slate-100 text-slate-500 hover:text-blue-600 hover:bg-blue-50 transition-all" title="Bulan berikutnya"><ChevronLeft size={18} className="rotate-180" /></button>
+                </div>
+
+                <div className="grid grid-cols-7 gap-1 sm:gap-2 mb-2">
+                  {['Sen', 'Sel', 'Rab', 'Kam', 'Jum', 'Sab', 'Min'].map((hari) => (
+                    <div key={hari} className="text-center text-[9px] sm:text-[11px] font-black uppercase tracking-widest text-slate-400 py-1.5">{hari}</div>
+                  ))}
+                </div>
+
+                <div className="grid grid-cols-7 gap-1 sm:gap-2">
+                  {calendarCells.map((date, index) => {
+                    if (!date) return <div key={`empty-${index}`} className="min-h-[58px] sm:min-h-[106px] rounded-xl sm:rounded-2xl bg-slate-50/40"></div>;
+                    const dateKey = toDateKey(date);
+                    const events = getEventsForDate(date);
+                    const isToday = dateKey === todayKey;
+                    const isSelected = dateKey === selectedDateKey;
+                    return (
+                      <button
+                        key={dateKey}
+                        onClick={() => setSelectedCalendarDate(date)}
+                        className={`min-h-[58px] sm:min-h-[106px] rounded-xl sm:rounded-2xl border-2 p-1.5 sm:p-2 text-left transition-all duration-300 ${isSelected ? 'border-blue-400 bg-blue-50/80 shadow-md shadow-blue-500/10' : 'border-transparent hover:border-blue-200 hover:bg-slate-50'} ${isToday && !isSelected ? 'bg-teal-50/60 border-teal-100' : ''}`}
+                      >
+                        <div className="flex items-start justify-between gap-1">
+                          <span className={`inline-flex items-center justify-center w-6 h-6 sm:w-7 sm:h-7 rounded-full text-[11px] sm:text-xs font-black ${isToday ? 'bg-teal-500 text-white shadow-sm' : isSelected ? 'bg-blue-500 text-white' : 'text-slate-700'}`}>{date.getDate()}</span>
+                          {events.length > 0 && <span className="text-[8px] sm:text-[9px] font-black text-blue-600 bg-blue-100/80 rounded-full px-1.5 py-0.5">{events.length}</span>}
+                        </div>
+                        <div className="hidden sm:block mt-1.5 space-y-1">
+                          {events.slice(0, 2).map((event) => (
+                            <div key={event.key} className={`truncate text-[9px] font-bold px-1.5 py-0.5 rounded-md ${event.type === 'pusling' ? 'bg-blue-100/80 text-blue-700' : 'bg-teal-100/80 text-teal-700'}`}>
+                              {event.time.split(' - ')[0]} · {event.title}
+                            </div>
+                          ))}
+                          {events.length > 2 && <p className="text-[9px] font-bold text-slate-400 pl-1.5">+{events.length - 2} kegiatan</p>}
+                        </div>
+                        <div className="flex sm:hidden justify-center gap-0.5 mt-1.5">
+                          {events.slice(0, 3).map((event) => <span key={event.key} className={`w-1.5 h-1.5 rounded-full ${event.type === 'pusling' ? 'bg-blue-500' : 'bg-teal-500'}`}></span>)}
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+
+                <div className="flex flex-wrap items-center gap-3 sm:gap-5 mt-5 pt-4 border-t border-slate-100">
+                  <span className="flex items-center gap-2 text-[10px] sm:text-xs font-bold text-slate-500"><span className="w-2.5 h-2.5 rounded-full bg-blue-500"></span> Jadwal rutin pusling</span>
+                  <span className="flex items-center gap-2 text-[10px] sm:text-xs font-bold text-slate-500"><span className="w-2.5 h-2.5 rounded-full bg-teal-500"></span> Kunjungan disetujui</span>
+                  <span className="flex items-center gap-2 text-[10px] sm:text-xs font-bold text-slate-500"><span className="w-2.5 h-2.5 rounded-full bg-slate-200"></span> Tanpa kegiatan</span>
+                </div>
+              </div>
+
+              <div className="bg-white/85 backdrop-blur-xl rounded-[1.75rem] sm:rounded-[2.25rem] border border-white shadow-xl shadow-slate-200/50 p-5 sm:p-6 lg:sticky lg:top-28">
+                <div className="flex items-start justify-between gap-3 mb-5">
+                  <div>
+                    <p className="text-[10px] font-black uppercase tracking-widest text-blue-600 mb-1">Agenda</p>
+                    <h3 className="text-lg sm:text-xl font-black text-slate-800">{formatTanggalID(selectedCalendarDate)}</h3>
+                    {selectedDateKey === todayKey && <span className="inline-flex mt-2 text-[9px] font-black uppercase tracking-widest text-teal-700 bg-teal-50 border border-teal-100 px-2.5 py-1 rounded-full">Hari ini</span>}
+                  </div>
+                  <div className="bg-blue-50 border border-blue-100 text-blue-700 rounded-2xl p-3 text-center min-w-[64px]">
+                    <p className="text-2xl font-black leading-none">{selectedDateEvents.length}</p>
+                    <p className="text-[9px] font-bold uppercase tracking-widest mt-1">Kegiatan</p>
+                  </div>
+                </div>
+
+                {selectedDateEvents.length === 0 ? (
+                  <div className="text-center py-10 px-4 bg-slate-50/70 rounded-[1.5rem] border border-dashed border-slate-200">
+                    <Calendar size={32} className="mx-auto text-slate-300 mb-3" />
+                    <p className="text-sm font-bold text-slate-600 mb-1">Belum ada kegiatan</p>
+                    <p className="text-xs text-slate-400">Pilih tanggal lain atau ajukan kunjungan ke lokasi Anda.</p>
+                    <button onClick={() => { setPermohonanForm({ ...createEmptyPermohonan(), tanggal_kunjungan: selectedDateKey }); setPermohonanSuccess(null); setCurrentPage('permohonan'); }} className="mt-4 text-xs font-bold text-blue-600 hover:text-blue-700 inline-flex items-center gap-1.5">Ajukan kunjungan <ArrowRight size={14} /></button>
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    {selectedDateEvents.map((event) => (
+                      <div key={event.key} className={`rounded-[1.25rem] border p-4 ${event.type === 'pusling' ? 'bg-blue-50/60 border-blue-100' : 'bg-teal-50/60 border-teal-100'}`}>
+                        <div className="flex items-center justify-between gap-2 mb-2">
+                          <span className={`text-[9px] font-black uppercase tracking-widest px-2.5 py-1 rounded-full ${event.type === 'pusling' ? 'bg-blue-100 text-blue-700' : 'bg-teal-100 text-teal-700'}`}>{event.type === 'pusling' ? 'Jadwal Pusling' : 'Kunjungan Disetujui'}</span>
+                          <span className="text-[10px] font-black text-slate-600 bg-white/80 px-2 py-1 rounded-lg flex items-center gap-1"><Clock size={11} /> {event.time}</span>
+                        </div>
+                        <h4 className="font-black text-slate-800 text-sm mb-1">{event.title}</h4>
+                        <p className="text-xs text-slate-500 font-medium leading-relaxed mb-3">{event.description}</p>
+                        {event.alamat && <p className="text-[11px] font-semibold text-slate-500 flex items-start gap-1.5 mb-1"><MapPin size={12} className="mt-0.5 shrink-0" /> {event.alamat}</p>}
+                        {event.peserta && <p className="text-[11px] font-semibold text-slate-500 flex items-center gap-1.5"><Users size={12} /> {event.peserta} peserta</p>}
+                        <div className="flex flex-wrap gap-2 mt-3">
+                          {event.loc && <button onClick={() => openLocationOnMap(event.loc)} className="text-[10px] font-bold text-blue-700 bg-white border border-blue-200 px-3 py-2 rounded-xl hover:bg-blue-500 hover:text-white hover:border-blue-500 transition-all flex items-center gap-1.5"><MapPin size={12} /> Buka di Peta</button>}
+                          <button onClick={() => handleAjukanDariKalender(event)} className="text-[10px] font-bold text-slate-600 bg-white/70 border border-slate-200 px-3 py-2 rounded-xl hover:bg-white hover:text-teal-700 hover:border-teal-200 transition-all flex items-center gap-1.5"><Send size={12} /> Ajukan Kunjungan</button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        </section>
+      </div>
+
+      {/* ========================================= */}
+      {/* 4. PERMOHONAN KUNJUNGAN PAGE             */}
+      {/* ========================================= */}
+      <div className={`flex-1 flex-col overflow-y-auto ${currentPage === 'permohonan' ? 'flex' : 'hidden'}`}>
+        <section className="min-h-[100dvh] bg-slate-50 pt-24 sm:pt-28 pb-16 px-4 sm:px-6 relative overflow-hidden">
+          <div className="absolute top-0 left-0 w-[45vw] h-[45vw] bg-blue-100/50 blur-[120px] rounded-full pointer-events-none"></div>
+          <div className="absolute bottom-0 right-0 w-[40vw] h-[40vw] bg-teal-100/50 blur-[120px] rounded-full pointer-events-none"></div>
+          <div className="max-w-6xl mx-auto relative z-10">
+            <div className="text-center max-w-3xl mx-auto mb-10">
+              <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-teal-50 border border-teal-100 text-teal-700 text-[10px] sm:text-xs font-black uppercase tracking-widest mb-4">
+                <Send size={14} /> Permohonan Kunjungan
+              </div>
+              <h1 className="text-3xl sm:text-4xl md:text-5xl font-black text-slate-800 tracking-tight mb-3">Ajukan Kunjungan Perpustakaan Keliling</h1>
+              <p className="text-slate-500 text-sm sm:text-base font-medium">Sekolah, instansi, komunitas, maupun masyarakat umum dapat mengajukan permohonan kunjungan. Admin akan memverifikasi dan menghubungi Anda melalui kontak yang diisi.</p>
+            </div>
+
+            {permohonanSuccess ? (
+              <div className="max-w-3xl mx-auto bg-white/90 backdrop-blur-2xl rounded-[2rem] sm:rounded-[2.5rem] border border-white shadow-2xl shadow-slate-200/60 p-6 sm:p-10 text-center">
+                <div className="w-20 h-20 rounded-full bg-teal-50 border-2 border-white shadow-lg shadow-teal-500/10 flex items-center justify-center mx-auto mb-6"><CheckCircle2 size={40} className="text-teal-500" /></div>
+                <h2 className="text-2xl sm:text-3xl font-black text-slate-800 mb-2">Permohonan Terkirim</h2>
+                <p className="text-slate-500 text-sm sm:text-base font-medium mb-8">Terima kasih, permohonan kunjungan Anda sudah kami terima dan akan diverifikasi oleh admin Perpusda Kabupaten Bogor.</p>
+
+                <div className="grid sm:grid-cols-2 gap-3 text-left mb-7">
+                  <div className="bg-slate-50 rounded-2xl p-4 border border-slate-100"><p className="text-[9px] font-black uppercase tracking-widest text-slate-400 mb-1">Nama Pemohon</p><p className="text-sm font-bold text-slate-800">{permohonanSuccess.nama_pemohon}</p></div>
+                  <div className="bg-slate-50 rounded-2xl p-4 border border-slate-100"><p className="text-[9px] font-black uppercase tracking-widest text-slate-400 mb-1">Instansi / Komunitas</p><p className="text-sm font-bold text-slate-800">{permohonanSuccess.instansi || '-'}</p></div>
+                  <div className="bg-slate-50 rounded-2xl p-4 border border-slate-100"><p className="text-[9px] font-black uppercase tracking-widest text-slate-400 mb-1">Tanggal</p><p className="text-sm font-bold text-slate-800">{formatTanggalID(permohonanSuccess.tanggal_kunjungan, { weekday: undefined })}</p></div>
+                  <div className="bg-slate-50 rounded-2xl p-4 border border-slate-100"><p className="text-[9px] font-black uppercase tracking-widest text-slate-400 mb-1">Jam</p><p className="text-sm font-bold text-slate-800">{permohonanSuccess.jam_kunjungan} WIB</p></div>
+                  <div className="bg-slate-50 rounded-2xl p-4 border border-slate-100"><p className="text-[9px] font-black uppercase tracking-widest text-slate-400 mb-1">Jumlah Peserta</p><p className="text-sm font-bold text-slate-800">{permohonanSuccess.jumlah_peserta} orang</p></div>
+                  <div className="bg-slate-50 rounded-2xl p-4 border border-slate-100"><p className="text-[9px] font-black uppercase tracking-widest text-slate-400 mb-1">Status</p><p className="text-sm font-bold text-amber-600">Menunggu verifikasi</p></div>
+                  <div className="sm:col-span-2 bg-slate-50 rounded-2xl p-4 border border-slate-100"><p className="text-[9px] font-black uppercase tracking-widest text-slate-400 mb-1">Lokasi Kunjungan</p><p className="text-sm font-bold text-slate-800">{permohonanSuccess.alamat_lokasi}</p></div>
+                </div>
+
+                {permohonanSuccess.local && (
+                  <div className="flex items-start gap-3 text-left bg-amber-50 border border-amber-200 text-amber-800 rounded-2xl p-4 mb-7 text-xs font-semibold">
+                    <AlertCircle size={18} className="shrink-0 mt-0.5" />
+                    <span>Permohonan tersimpan sementara di perangkat ini karena tabel database belum dibuat. Jalankan file SQL migrasi Supabase agar permohonan masuk ke dashboard admin.</span>
+                  </div>
+                )}
+
+                <div className="flex flex-col sm:flex-row justify-center gap-3">
+                  <button onClick={() => { setPermohonanSuccess(null); setPermohonanForm(createEmptyPermohonan()); }} className="bg-blue-500 hover:bg-blue-600 text-white px-6 py-3.5 rounded-2xl text-sm font-bold shadow-lg shadow-blue-500/20 hover:-translate-y-0.5 transition-all">Buat Permohonan Lain</button>
+                  <button onClick={() => setCurrentPage('calendar')} className="bg-white border border-slate-200 text-slate-600 px-6 py-3.5 rounded-2xl text-sm font-bold hover:bg-slate-50 transition-all flex items-center justify-center gap-2"><CalendarDays size={16} /> Lihat Kalender</button>
+                </div>
+              </div>
+            ) : (
+              <div className="grid lg:grid-cols-[1.45fr_1fr] gap-6 items-start">
+                <form onSubmit={handleSubmitPermohonan} className="bg-white/90 backdrop-blur-2xl rounded-[2rem] sm:rounded-[2.5rem] border border-white shadow-2xl shadow-slate-200/60 p-5 sm:p-8">
+                  <div className="flex items-center gap-3 mb-6">
+                    <div className="bg-blue-100 text-blue-600 p-2.5 rounded-2xl"><ClipboardList size={20} /></div>
+                    <div>
+                      <h2 className="text-lg sm:text-xl font-black text-slate-800">Formulir Permohonan</h2>
+                      <p className="text-[11px] text-slate-400 font-semibold">Isi data dengan lengkap dan benar.</p>
+                    </div>
+                  </div>
+
+                  <div className="space-y-4 sm:space-y-5">
+                    <div>
+                      <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 ml-1">Jenis Pemohon</label>
+                      <select name="jenis_pemohon" value={permohonanForm.jenis_pemohon} onChange={handlePermohonanChange} className="w-full bg-white border border-slate-200 rounded-[1.25rem] p-3.5 sm:p-4 text-sm font-semibold outline-none focus:border-blue-400 focus:ring-4 focus:ring-blue-500/10 transition-all shadow-sm cursor-pointer">
+                        {JENIS_PEMOHON.map((jenis) => <option key={jenis} value={jenis}>{jenis}</option>)}
+                      </select>
+                    </div>
+
+                    <div className="grid sm:grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 ml-1">Nama Penanggung Jawab</label>
+                        <input required type="text" name="nama_pemohon" value={permohonanForm.nama_pemohon} onChange={handlePermohonanChange} className="w-full bg-white border border-slate-200 rounded-[1.25rem] p-3.5 sm:p-4 text-sm font-semibold outline-none focus:border-blue-400 focus:ring-4 focus:ring-blue-500/10 transition-all shadow-sm" placeholder="Nama lengkap" />
+                      </div>
+                      <div>
+                        <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 ml-1">{permohonanForm.jenis_pemohon === 'Masyarakat Umum' ? 'Komunitas / Instansi (opsional)' : 'Nama Sekolah / Instansi'}</label>
+                        <input required={permohonanForm.jenis_pemohon !== 'Masyarakat Umum'} type="text" name="instansi" value={permohonanForm.instansi} onChange={handlePermohonanChange} className="w-full bg-white border border-slate-200 rounded-[1.25rem] p-3.5 sm:p-4 text-sm font-semibold outline-none focus:border-blue-400 focus:ring-4 focus:ring-blue-500/10 transition-all shadow-sm" placeholder="Contoh: SDN 1 Cibinong" />
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 ml-1">Kontak WhatsApp / Email</label>
+                      <input required type="text" name="kontak" value={permohonanForm.kontak} onChange={handlePermohonanChange} className="w-full bg-white border border-slate-200 rounded-[1.25rem] p-3.5 sm:p-4 text-sm font-semibold outline-none focus:border-blue-400 focus:ring-4 focus:ring-blue-500/10 transition-all shadow-sm" placeholder="0812xxxxxxx atau nama@email.com" />
+                    </div>
+
+                    <div>
+                      <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 ml-1">Alamat / Lokasi Kunjungan</label>
+                      <textarea required name="alamat_lokasi" value={permohonanForm.alamat_lokasi} onChange={handlePermohonanChange} rows="3" className="w-full bg-white border border-slate-200 rounded-[1.25rem] p-3.5 sm:p-4 text-sm font-medium outline-none focus:border-blue-400 focus:ring-4 focus:ring-blue-500/10 transition-all shadow-sm resize-none" placeholder="Nama sekolah/instansi, alamat lengkap, patokan lokasi..." />
+                    </div>
+
+                    <div className="grid sm:grid-cols-3 gap-4">
+                      <div>
+                        <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 ml-1">Tanggal</label>
+                        <input required type="date" min={todayKey} name="tanggal_kunjungan" value={permohonanForm.tanggal_kunjungan} onChange={handlePermohonanChange} className="w-full bg-white border border-slate-200 rounded-[1.25rem] p-3.5 sm:p-4 text-sm font-semibold outline-none focus:border-blue-400 focus:ring-4 focus:ring-blue-500/10 transition-all shadow-sm cursor-pointer" />
+                      </div>
+                      <div>
+                        <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 ml-1">Jam Mulai</label>
+                        <input required type="time" name="jam_kunjungan" value={permohonanForm.jam_kunjungan} onChange={handlePermohonanChange} className="w-full bg-white border border-slate-200 rounded-[1.25rem] p-3.5 sm:p-4 text-sm font-semibold outline-none focus:border-blue-400 focus:ring-4 focus:ring-blue-500/10 transition-all shadow-sm cursor-pointer" />
+                      </div>
+                      <div>
+                        <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 ml-1">Jumlah Peserta</label>
+                        <input required type="number" min="1" name="jumlah_peserta" value={permohonanForm.jumlah_peserta} onChange={handlePermohonanChange} className="w-full bg-white border border-slate-200 rounded-[1.25rem] p-3.5 sm:p-4 text-sm font-semibold outline-none focus:border-blue-400 focus:ring-4 focus:ring-blue-500/10 transition-all shadow-sm" placeholder="50" />
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 ml-1">Keperluan / Kebutuhan Layanan</label>
+                      <textarea required name="keperluan" value={permohonanForm.keperluan} onChange={handlePermohonanChange} rows="3" className="w-full bg-white border border-slate-200 rounded-[1.25rem] p-3.5 sm:p-4 text-sm font-medium outline-none focus:border-blue-400 focus:ring-4 focus:ring-blue-500/10 transition-all shadow-sm resize-none" placeholder="Contoh: literasi kelas, pojok baca, layanan pinjam buku..." />
+                    </div>
+
+                    <label className="flex items-start gap-3 bg-slate-50 border border-slate-200 rounded-2xl p-4 cursor-pointer">
+                      <input required type="checkbox" name="setuju" checked={permohonanForm.setuju} onChange={handlePermohonanChange} className="mt-0.5 w-4 h-4 accent-blue-600" />
+                      <span className="text-[11px] sm:text-xs text-slate-600 font-medium leading-relaxed">Saya menyetujui data yang diisi digunakan untuk proses verifikasi dan koordinasi kunjungan Perpustakaan Keliling.</span>
+                    </label>
+
+                    <button type="submit" disabled={isSubmittingPermohonan} className="w-full bg-blue-500 hover:bg-blue-600 text-white font-bold py-4 rounded-[1.25rem] transition-all shadow-lg shadow-blue-500/30 hover:shadow-xl hover:shadow-blue-500/40 hover:-translate-y-0.5 flex items-center justify-center gap-2 disabled:opacity-60 disabled:cursor-not-allowed">
+                      {isSubmittingPermohonan ? <Loader2 size={18} className="animate-spin" /> : <Send size={18} />}
+                      {isSubmittingPermohonan ? 'Mengirim Permohonan...' : 'Kirim Permohonan'}
+                    </button>
+                  </div>
+                </form>
+
+                <aside className="space-y-5 lg:sticky lg:top-28">
+                  <div className="bg-gradient-to-br from-blue-600 via-blue-500 to-teal-500 rounded-[2rem] p-6 sm:p-7 text-white shadow-xl shadow-blue-500/20 relative overflow-hidden">
+                    <div className="absolute -top-12 -right-12 w-40 h-40 rounded-full bg-white/10 blur-2xl"></div>
+                    <h3 className="text-lg font-black mb-4 flex items-center gap-2"><ClipboardList size={19} /> Alur Permohonan</h3>
+                    <ol className="space-y-4 text-sm">
+                      <li className="flex gap-3"><span className="w-6 h-6 rounded-full bg-white/20 border border-white/30 flex items-center justify-center text-[10px] font-black shrink-0">1</span><span className="font-medium text-blue-50/90">Isi formulir permohonan dengan data yang valid.</span></li>
+                      <li className="flex gap-3"><span className="w-6 h-6 rounded-full bg-white/20 border border-white/30 flex items-center justify-center text-[10px] font-black shrink-0">2</span><span className="font-medium text-blue-50/90">Admin memverifikasi jadwal dan menghubungi pemohon.</span></li>
+                      <li className="flex gap-3"><span className="w-6 h-6 rounded-full bg-white/20 border border-white/30 flex items-center justify-center text-[10px] font-black shrink-0">3</span><span className="font-medium text-blue-50/90">Kunjungan disetujui dan tampil di kalender publik.</span></li>
+                    </ol>
+                  </div>
+
+                  <div className="bg-white/90 backdrop-blur-xl rounded-[2rem] border border-white p-6 shadow-xl shadow-slate-200/50">
+                    <h3 className="font-black text-slate-800 mb-3 flex items-center gap-2"><Phone size={17} className="text-teal-500" /> Butuh Bantuan?</h3>
+                    <p className="text-xs text-slate-500 font-medium leading-relaxed mb-4">Hubungi layanan Perpustakaan Keliling Kabupaten Bogor untuk informasi lebih lanjut.</p>
+                    <div className="space-y-2.5">
+                      <a href={getWhatsAppLink(KONTAK_LAYANAN.whatsapp)} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2.5 text-xs font-bold text-teal-700 bg-teal-50 hover:bg-teal-100 border border-teal-100 rounded-xl px-3.5 py-3 transition-colors"><MessageCircle size={15} /> WhatsApp Layanan</a>
+                      <a href={`mailto:${KONTAK_LAYANAN.email}`} className="flex items-center gap-2.5 text-xs font-bold text-blue-700 bg-blue-50 hover:bg-blue-100 border border-blue-100 rounded-xl px-3.5 py-3 transition-colors"><Mail size={15} /> {KONTAK_LAYANAN.email}</a>
+                    </div>
+                  </div>
+
+                  <div className="bg-amber-50 border border-amber-100 rounded-[1.5rem] p-5 text-xs text-amber-800 font-semibold leading-relaxed flex items-start gap-3">
+                    <AlertCircle size={18} className="shrink-0 mt-0.5" />
+                    <span>Permohonan akan tampil di kalender publik setelah disetujui admin. Pastikan kontak yang diisi aktif.</span>
+                  </div>
+                </aside>
+              </div>
+            )}
+          </div>
+        </section>
+      </div>
+
+      {/* ========================================= */}
+      {/* 5. ADMIN PAGE                            */}
       {/* ========================================= */}
       <div className={`flex-1 flex-col overflow-y-auto ${currentPage === 'admin' ? 'flex' : 'hidden'} ${!isSupabaseConfigured && session ? 'mt-8' : ''}`}>
         {!session ? (
@@ -774,6 +1392,14 @@ export default function App() {
               </div>
             </header>
 
+            <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-5 w-full">
+              <div className="inline-flex items-center gap-1 bg-white/80 backdrop-blur-xl border border-white p-1.5 rounded-2xl shadow-lg shadow-slate-200/40">
+                <button onClick={() => setAdminTab('jadwal')} className={`px-4 sm:px-5 py-2.5 rounded-xl text-xs sm:text-sm font-bold flex items-center gap-2 transition-all ${adminTab === 'jadwal' ? 'bg-blue-500 text-white shadow-md shadow-blue-500/20' : 'text-slate-500 hover:bg-slate-50'}`}><Map size={16} /> Jadwal & Peta</button>
+                <button onClick={() => setAdminTab('permohonan')} className={`px-4 sm:px-5 py-2.5 rounded-xl text-xs sm:text-sm font-bold flex items-center gap-2 transition-all ${adminTab === 'permohonan' ? 'bg-blue-500 text-white shadow-md shadow-blue-500/20' : 'text-slate-500 hover:bg-slate-50'}`}><Inbox size={16} /> Permohonan {permohonanCounts.menunggu > 0 && <span className={`min-w-[20px] h-5 px-1.5 rounded-full text-[10px] font-black flex items-center justify-center ${adminTab === 'permohonan' ? 'bg-white/20 text-white' : 'bg-amber-100 text-amber-700'}`}>{permohonanCounts.menunggu}</span>}</button>
+              </div>
+            </div>
+
+            {adminTab === 'jadwal' && (
             <div className="max-w-7xl mx-auto p-4 sm:p-6 lg:p-8 w-full flex flex-col lg:flex-row gap-5 sm:gap-8 flex-1">
               <div className="w-full lg:w-[45%] flex flex-col gap-5">
                 <div className="bg-white/80 backdrop-blur-xl rounded-[1.5rem] sm:rounded-[2rem] p-5 sm:p-6 border border-white shadow-xl shadow-slate-200/40">
@@ -848,6 +1474,112 @@ export default function App() {
                 </div>
               </div>
             </div>
+            )}
+
+            {adminTab === 'permohonan' && (
+            <div className="max-w-7xl mx-auto p-4 sm:p-6 lg:p-8 w-full flex-1">
+              <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 mb-5">
+                <div className="bg-white/80 backdrop-blur-xl border border-white rounded-[1.5rem] p-4 sm:p-5 shadow-lg shadow-slate-200/40">
+                  <div className="flex items-center justify-between mb-3"><span className="text-[10px] font-black uppercase tracking-widest text-slate-400">Total</span><Inbox size={18} className="text-blue-500" /></div>
+                  <p className="text-2xl sm:text-3xl font-black text-slate-800">{permohonanCounts.total}</p>
+                </div>
+                <div className="bg-white/80 backdrop-blur-xl border border-white rounded-[1.5rem] p-4 sm:p-5 shadow-lg shadow-slate-200/40">
+                  <div className="flex items-center justify-between mb-3"><span className="text-[10px] font-black uppercase tracking-widest text-slate-400">Menunggu</span><Clock size={18} className="text-amber-500" /></div>
+                  <p className="text-2xl sm:text-3xl font-black text-amber-600">{permohonanCounts.menunggu}</p>
+                </div>
+                <div className="bg-white/80 backdrop-blur-xl border border-white rounded-[1.5rem] p-4 sm:p-5 shadow-lg shadow-slate-200/40">
+                  <div className="flex items-center justify-between mb-3"><span className="text-[10px] font-black uppercase tracking-widest text-slate-400">Disetujui</span><CircleCheck size={18} className="text-teal-500" /></div>
+                  <p className="text-2xl sm:text-3xl font-black text-teal-600">{permohonanCounts.disetujui}</p>
+                </div>
+                <div className="bg-white/80 backdrop-blur-xl border border-white rounded-[1.5rem] p-4 sm:p-5 shadow-lg shadow-slate-200/40">
+                  <div className="flex items-center justify-between mb-3"><span className="text-[10px] font-black uppercase tracking-widest text-slate-400">Ditolak</span><CircleX size={18} className="text-rose-500" /></div>
+                  <p className="text-2xl sm:text-3xl font-black text-rose-600">{permohonanCounts.ditolak}</p>
+                </div>
+              </div>
+
+              {!permohonanDbReady && (
+                <div className="flex flex-col sm:flex-row sm:items-start gap-3 bg-amber-50 border border-amber-200 text-amber-800 rounded-[1.5rem] p-4 sm:p-5 mb-5 text-xs font-semibold">
+                  <AlertCircle size={20} className="shrink-0" />
+                  <div className="flex-1">
+                    <p className="font-black mb-1">Tabel permohonan belum terdeteksi</p>
+                    <p className="leading-relaxed">Jalankan file <code className="bg-amber-100 px-1.5 py-0.5 rounded">supabase/migrations/20261107000000_permohonan_kunjungan.sql</code> di SQL Editor Supabase. Sementara itu, permohonan yang dikirim dari browser ini disimpan lokal.</p>
+                  </div>
+                  <button onClick={refreshPermohonanAdmin} className="bg-white border border-amber-200 text-amber-700 px-4 py-2.5 rounded-xl font-bold hover:bg-amber-100 transition-colors flex items-center justify-center gap-2 shrink-0"><RefreshCw size={14} /> Cek Ulang</button>
+                </div>
+              )}
+
+              <div className="bg-white/80 backdrop-blur-xl rounded-[1.75rem] sm:rounded-[2rem] border border-white shadow-xl shadow-slate-200/40 overflow-hidden">
+                <div className="p-4 sm:p-6 border-b border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                  <div>
+                    <h2 className="text-lg sm:text-xl font-black text-slate-800 flex items-center gap-2.5"><ClipboardList size={20} className="text-blue-500" /> Permohonan Kunjungan</h2>
+                    <p className="text-[11px] sm:text-xs text-slate-400 font-semibold mt-1">Setujui permohonan agar otomatis muncul di kalender publik.</p>
+                  </div>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    {['semua', 'menunggu', 'disetujui', 'ditolak'].map((status) => (
+                      <button key={status} onClick={() => setPermohonanFilter(status)} className={`px-3 py-2 rounded-xl text-[10px] sm:text-xs font-bold capitalize border transition-all ${permohonanFilter === status ? 'bg-blue-500 text-white border-blue-500 shadow-md shadow-blue-500/20' : 'bg-white text-slate-500 border-slate-200 hover:bg-slate-50'}`}>{status === 'semua' ? 'Semua' : getStatusMeta(status).label}</button>
+                    ))}
+                    <button onClick={refreshPermohonanAdmin} className="p-2.5 rounded-xl bg-slate-50 border border-slate-200 text-slate-500 hover:text-blue-600 hover:bg-blue-50 transition-all" title="Muat ulang"><RefreshCw size={15} className={isPermohonanLoading ? 'animate-spin' : ''} /></button>
+                  </div>
+                </div>
+
+                {isPermohonanLoading ? (
+                  <div className="flex flex-col items-center justify-center py-16 gap-3"><Loader2 className="animate-spin text-blue-500" size={28} /><p className="text-xs font-bold text-slate-400">Memuat permohonan...</p></div>
+                ) : filteredPermohonan.length === 0 ? (
+                  <div className="text-center py-16 px-6">
+                    <div className="w-16 h-16 rounded-2xl bg-slate-50 border border-slate-100 flex items-center justify-center mx-auto mb-4"><Inbox size={30} className="text-slate-300" /></div>
+                    <p className="font-black text-slate-700 mb-1">Belum ada permohonan</p>
+                    <p className="text-xs text-slate-400 font-medium">Permohonan yang masuk akan muncul di sini.</p>
+                  </div>
+                ) : (
+                  <div className="divide-y divide-slate-100">
+                    {filteredPermohonan.map((item) => {
+                      const meta = getStatusMeta(item.status);
+                      return (
+                        <div key={item.id} className="p-4 sm:p-6 hover:bg-blue-50/20 transition-colors">
+                          <div className="flex flex-col lg:flex-row lg:items-start justify-between gap-5">
+                            <div className="flex items-start gap-3 sm:gap-4 flex-1 min-w-0">
+                              <div className={`w-11 h-11 rounded-2xl flex items-center justify-center shrink-0 border ${item.jenis_pemohon === 'Sekolah' ? 'bg-blue-50 border-blue-100 text-blue-500' : 'bg-teal-50 border-teal-100 text-teal-500'}`}>
+                                {item.jenis_pemohon === 'Sekolah' ? <School size={20} /> : <Users size={20} />}
+                              </div>
+                              <div className="min-w-0 flex-1">
+                                <div className="flex flex-wrap items-center gap-2 mb-1">
+                                  <h3 className="font-black text-slate-800 text-sm sm:text-base truncate">{item.instansi || item.nama_pemohon}</h3>
+                                  <span className={`inline-flex items-center gap-1.5 text-[9px] font-black uppercase tracking-widest px-2.5 py-1 rounded-full border ${meta.badge}`}><span className={`w-1.5 h-1.5 rounded-full ${meta.dot}`}></span>{meta.label}</span>
+                                  {item.local && <span className="text-[9px] font-black uppercase tracking-widest px-2 py-1 rounded-full bg-slate-100 text-slate-500 border border-slate-200">Lokal</span>}
+                                </div>
+                                <p className="text-[11px] sm:text-xs text-slate-500 font-semibold mb-3">{item.jenis_pemohon} • {item.nama_pemohon}</p>
+
+                                <div className="grid sm:grid-cols-2 gap-x-4 gap-y-2 text-[11px] sm:text-xs font-semibold text-slate-600">
+                                  <span className="flex items-center gap-2"><CalendarDays size={13} className="text-blue-500 shrink-0" /> {formatTanggalID(item.tanggal_kunjungan, { weekday: undefined })}</span>
+                                  <span className="flex items-center gap-2"><Clock size={13} className="text-teal-500 shrink-0" /> {item.jam_kunjungan} WIB</span>
+                                  <span className="flex items-center gap-2"><Users size={13} className="text-indigo-500 shrink-0" /> {item.jumlah_peserta} peserta</span>
+                                  <span className="flex items-center gap-2 min-w-0"><Phone size={13} className="text-amber-500 shrink-0" /> <span className="truncate">{item.kontak}</span></span>
+                                  <span className="flex items-start gap-2 sm:col-span-2"><MapPin size={13} className="text-rose-500 shrink-0 mt-0.5" /> <span>{item.alamat_lokasi}</span></span>
+                                </div>
+
+                                {item.keperluan && (
+                                  <div className="mt-3 bg-slate-50 border border-slate-100 rounded-xl p-3">
+                                    <p className="text-[9px] font-black uppercase tracking-widest text-slate-400 mb-1">Keperluan</p>
+                                    <p className="text-[11px] sm:text-xs text-slate-600 font-medium leading-relaxed">{item.keperluan}</p>
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+
+                            <div className="flex lg:flex-col gap-2 shrink-0">
+                              {item.status !== 'disetujui' && <button onClick={() => handleUpdatePermohonanStatus(item, 'disetujui')} className="flex-1 lg:flex-none text-[10px] sm:text-xs font-bold text-teal-700 bg-teal-50 hover:bg-teal-500 hover:text-white border border-teal-200 px-4 py-2.5 rounded-xl transition-all flex items-center justify-center gap-1.5"><CircleCheck size={14} /> Setujui</button>}
+                              {item.status !== 'ditolak' && <button onClick={() => handleUpdatePermohonanStatus(item, 'ditolak')} className="flex-1 lg:flex-none text-[10px] sm:text-xs font-bold text-rose-700 bg-rose-50 hover:bg-rose-500 hover:text-white border border-rose-200 px-4 py-2.5 rounded-xl transition-all flex items-center justify-center gap-1.5"><CircleX size={14} /> Tolak</button>}
+                              {item.status !== 'menunggu' && <button onClick={() => handleUpdatePermohonanStatus(item, 'menunggu')} className="flex-1 lg:flex-none text-[10px] sm:text-xs font-bold text-slate-500 bg-slate-50 hover:bg-slate-200 border border-slate-200 px-4 py-2.5 rounded-xl transition-all flex items-center justify-center gap-1.5"><RefreshCw size={13} /> Pending</button>}
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            </div>
+            )}
 
             <div className="py-6 sm:py-8 text-center shrink-0">
               <p className="text-[9px] sm:text-[10px] font-bold tracking-widest text-slate-400 uppercase">© {new Date().getFullYear()} SIG Pusling <span className="mx-2 text-slate-300">•</span> Created by <span className="text-blue-500 ml-1">Musab Awwal</span></p>
