@@ -3,6 +3,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Map, MapPin, Navigation, Calendar, Clock, Plus, Trash2, Library, Truck, Info, Settings, X, ChevronLeft, Menu, ArrowDown, CalendarCheck, MousePointerClick, LogIn, LogOut, Compass, Loader2, Lock, Mail, KeyRound, ShieldCheck, ExternalLink, BookOpen, Globe, Building2, MapPinned, Info as InfoIcon } from 'lucide-react';
 
 import { createClient } from '@supabase/supabase-js';
+import perpusnasLogo from './assets/logo-perpusnas.png';
 
 // ==========================================
 // 🔴 KONFIGURASI SUPABASE DATABASE
@@ -41,9 +42,8 @@ const getTodayName = () => {
 };
 
 const AppLogo = ({ className = "w-10 h-10" }) => (
-  <div className={`relative flex items-center justify-center rounded-2xl bg-gradient-to-br from-blue-400 to-indigo-400 shadow-xl shadow-blue-500/20 border-2 border-white shrink-0 transition-all duration-500 hover:scale-110 hover:-translate-y-1 ${className}`}>
-    <Library className="text-white absolute drop-shadow-md" size="50%" style={{ transform: 'translateY(-2px)' }} />
-    <MapPin className="text-blue-100 absolute drop-shadow-lg" size="45%" style={{ transform: 'translate(10px, 8px)' }} />
+  <div className={`flex items-center justify-center rounded-2xl bg-white shadow-xl shadow-blue-500/20 border-2 border-white shrink-0 overflow-hidden transition-all duration-500 hover:scale-110 hover:-translate-y-1 ${className}`}>
+    <img src={perpusnasLogo} alt="Logo Perpusnas" className="h-full w-full object-contain" />
   </div>
 );
 
@@ -278,7 +278,7 @@ export default function App() {
 
       const baseIcon = L.divIcon({
         className: 'custom-icon',
-        html: `<div class="relative group"><div class="absolute -inset-2 bg-blue-400 rounded-full opacity-20 group-hover:opacity-40 animate-pulse"></div><div style="background: linear-gradient(135deg, #60a5fa, #818cf8); color: white; border-radius: 50%; padding: 4px; width: 44px; height: 44px; display: flex; justify-content: center; align-items: center; box-shadow: 0 10px 15px -3px rgb(59 130 246 / 0.4); border: 3px solid white; position: relative;"><svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m4 6 8-4 8 4"/><path d="m18 10 4 2v8a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2v-8l4-2"/><path d="M14 22v-4a2 2 0 0 0-2-2v0a2 2 0 0 0-2 2v4"/><path d="M18 5v17"/><path d="M6 5v17"/><circle cx="12" cy="9" r="2"/></svg></div></div>`,
+        html: `<div class="relative group"><div class="absolute -inset-2 bg-blue-400 rounded-full opacity-20 group-hover:opacity-40 animate-pulse"></div><div style="background: linear-gradient(135deg, #225faa, #159b47); color: white; border-radius: 50%; padding: 4px; width: 44px; height: 44px; display: flex; justify-content: center; align-items: center; box-shadow: 0 10px 15px -3px rgb(34 95 170 / 0.4); border: 3px solid white; position: relative;"><svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m4 6 8-4 8 4"/><path d="m18 10 4 2v8a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2v-8l4-2"/><path d="M14 22v-4a2 2 0 0 0-2-2v0a2 2 0 0 0-2 2v4"/><path d="M18 5v17"/><path d="M6 5v17"/><circle cx="12" cy="9" r="2"/></svg></div></div>`,
         iconSize: [44, 44], iconAnchor: [22, 22]
       });
 
@@ -300,7 +300,7 @@ export default function App() {
 
     const destIcon = L.divIcon({
       className: 'custom-icon transition-transform hover:scale-110',
-      html: `<div style="background: linear-gradient(135deg, #34d399, #2dd4bf); color: white; border-radius: 50%; width: 34px; height: 34px; display: flex; justify-content: center; align-items: center; box-shadow: 0 4px 10px rgba(45, 212, 191, 0.4); border: 2.5px solid white;"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H20v20H6.5a2.5 2.5 0 0 1 0-5H20"/></svg></div>`,
+      html: `<div style="background: linear-gradient(135deg, #159b47, #225faa); color: white; border-radius: 50%; width: 34px; height: 34px; display: flex; justify-content: center; align-items: center; box-shadow: 0 4px 10px rgba(21, 155, 71, 0.4); border: 2.5px solid white;"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H20v20H6.5a2.5 2.5 0 0 1 0-5H20"/></svg></div>`,
       iconSize: [34, 34], iconAnchor: [17, 17]
     });
 
@@ -336,7 +336,7 @@ export default function App() {
     adminMarkersRef.current = [];
     const adminIcon = L.divIcon({
       className: 'custom-icon cursor-move hover:scale-110 transition-transform',
-      html: `<div style="background: linear-gradient(135deg, #34d399, #2dd4bf); color: white; border-radius: 50%; padding: 6px; width: 34px; height: 34px; display: flex; justify-content: center; align-items: center; box-shadow: 0 6px 12px rgba(45, 212, 191, 0.3); border: 2.5px solid white;"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H20v20H6.5a2.5 2.5 0 0 1 0-5H20"/></svg></div>`,
+      html: `<div style="background: linear-gradient(135deg, #159b47, #225faa); color: white; border-radius: 50%; padding: 6px; width: 34px; height: 34px; display: flex; justify-content: center; align-items: center; box-shadow: 0 6px 12px rgba(21, 155, 71, 0.3); border: 2.5px solid white;"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H20v20H6.5a2.5 2.5 0 0 1 0-5H20"/></svg></div>`,
       iconSize: [34, 34], iconAnchor: [17, 17]
     });
     lokasiData.forEach(loc => {
@@ -377,7 +377,7 @@ export default function App() {
           L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution: '&copy; OpenStreetMap contributors' }).addTo(modalMapInstance.current);
           const modalIcon = L.divIcon({
             className: 'custom-icon cursor-move',
-            html: `<div style="background: #34d399; color: white; border-radius: 50%; width: 32px; height: 32px; display: flex; justify-content: center; align-items: center; box-shadow: 0 4px 10px rgba(0,0,0,0.1); border: 2.5px solid white;"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H20v20H6.5a2.5 2.5 0 0 1 0-5H20"/></svg></div>`,
+            html: `<div style="background: #159b47; color: white; border-radius: 50%; width: 32px; height: 32px; display: flex; justify-content: center; align-items: center; box-shadow: 0 4px 10px rgba(0,0,0,0.1); border: 2.5px solid white;"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H20v20H6.5a2.5 2.5 0 0 1 0-5H20"/></svg></div>`,
             iconSize: [32, 32], iconAnchor: [16, 16]
           });
           modalMarkerRef.current = L.marker([initialLat, initialLng], { icon: modalIcon, draggable: true }).addTo(modalMapInstance.current);
@@ -403,11 +403,11 @@ export default function App() {
       const L = window.L;
       if (data.routes && data.routes.length > 0) {
         const route = data.routes[0]; setRouteInfo({ distance: (route.distance / 1000).toFixed(2), duration: Math.ceil(route.duration / 60) });
-        routeLayerRef.current = L.geoJSON(route.geometry, { style: { color: '#60a5fa', weight: 6, opacity: 0.85, lineCap: 'round', lineJoin: 'round' } }).addTo(mapInstance.current);
+        routeLayerRef.current = L.geoJSON(route.geometry, { style: { color: '#225faa', weight: 6, opacity: 0.85, lineCap: 'round', lineJoin: 'round' } }).addTo(mapInstance.current);
         mapInstance.current.fitBounds(routeLayerRef.current.getBounds(), { padding: [50, 50], animate: true, duration: 1.5 });
       }
     } catch (error) {
-      const L = window.L; routeLayerRef.current = L.polyline([[start.lat, start.lng], [end.lat, end.lng]], { color: '#60a5fa', dashArray: '8, 12', weight: 4 }).addTo(mapInstance.current);
+      const L = window.L; routeLayerRef.current = L.polyline([[start.lat, start.lng], [end.lat, end.lng]], { color: '#225faa', dashArray: '8, 12', weight: 4 }).addTo(mapInstance.current);
       mapInstance.current.fitBounds(routeLayerRef.current.getBounds(), { padding: [50, 50], animate: true, duration: 1.5 });
     } finally { setIsLoadingRoute(false); }
   };
