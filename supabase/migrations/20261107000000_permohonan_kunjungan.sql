@@ -15,11 +15,24 @@ create table if not exists public.permohonan_kunjungan (
   jam_kunjungan text not null,
   jumlah_peserta integer not null default 1 check (jumlah_peserta > 0),
   keperluan text,
+  lat double precision,
+  lng double precision,
   status text not null default 'menunggu'
     check (status in ('menunggu', 'disetujui', 'ditolak')),
   catatan_admin text,
   created_at timestamptz not null default now()
 );
+
+-- Untuk database yang tabelnya sudah dibuat sebelumnya.
+alter table public.permohonan_kunjungan add column if not exists lat double precision;
+alter table public.permohonan_kunjungan add column if not exists lng double precision;
+
+alter table public.permohonan_kunjungan drop constraint if exists permohonan_kunjungan_coord_check;
+alter table public.permohonan_kunjungan add constraint permohonan_kunjungan_coord_check
+  check (
+    (lat is null and lng is null)
+    or (lat between -90 and 90 and lng between -180 and 180)
+  );
 
 create index if not exists permohonan_kunjungan_tanggal_idx
   on public.permohonan_kunjungan (tanggal_kunjungan);
@@ -86,7 +99,9 @@ select
   jam_kunjungan,
   alamat_lokasi,
   jumlah_peserta,
-  keperluan
+  keperluan,
+  lat,
+  lng
 from public.permohonan_kunjungan
 where status = 'disetujui';
 

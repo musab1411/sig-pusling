@@ -16,7 +16,14 @@ Supabase berikut:
    **Cek Ulang**.
 
 Setelah tabel dibuat, permohonan baru akan masuk ke database dan permohonan
-yang disetujui otomatis tampil di kalender publik.
+yang disetujui otomatis tampil di kalender publik. Jika permohonan memiliki
+kolom `lat` dan `lng` (diisi lewat peta pada formulir), lokasinya juga tampil
+sebagai titik kunjungan di halaman peta.
+
+> Untuk database yang sudah pernah menjalankan migrasi versi lama, jalankan
+> ulang file SQL tersebut. Perintah `alter table ... add column if not exists`
+> akan menambahkan kolom `lat`/`lng` dan memperbarui view
+> `permohonan_terjadwal` tanpa menghapus data yang sudah ada.
 
 ## Kebijakan Akses
 

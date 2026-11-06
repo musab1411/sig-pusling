@@ -1,6 +1,6 @@
 /* eslint-disable */
 import React, { useState, useEffect, useRef } from 'react';
-import { Map, MapPin, Navigation, Calendar, Clock, Plus, Trash2, Library, Truck, Info, Settings, X, ChevronLeft, Menu, ArrowDown, CalendarCheck, MousePointerClick, LogIn, LogOut, Compass, Loader2, Lock, Mail, KeyRound, ShieldCheck, ExternalLink, BookOpen, Globe, Building2, MapPinned, Info as InfoIcon, Phone, MessageCircle, Send, Camera, PlayCircle, ThumbsUp, AtSign, Home, CalendarDays, Users, School, FileText, Inbox, ClipboardList, CheckCircle2, CircleCheck, CircleX, RefreshCw, ArrowRight, AlertCircle, Database, User } from 'lucide-react';
+import { Map, MapPin, Navigation, Calendar, Clock, Plus, Trash2, Library, Truck, Info, Settings, X, ChevronLeft, Menu, ArrowDown, CalendarCheck, MousePointerClick, LogIn, LogOut, Compass, Loader2, Lock, Mail, KeyRound, ShieldCheck, ExternalLink, BookOpen, Globe, Building2, MapPinned, Info as InfoIcon, Phone, MessageCircle, Send, Camera, PlayCircle, ThumbsUp, AtSign, Home, CalendarDays, Users, School, FileText, Inbox, ClipboardList, CheckCircle2, CircleCheck, CircleX, RefreshCw, ArrowRight, AlertCircle, Database, User, LocateFixed, Search, Link2 } from 'lucide-react';
 
 import { createClient } from '@supabase/supabase-js';
 import perpusnasLogo from './assets/logo-perpusnas.png';
@@ -92,8 +92,91 @@ const createEmptyPermohonan = () => ({
   jam_kunjungan: '09:00',
   jumlah_peserta: '',
   keperluan: '',
+  lat: '',
+  lng: '',
+  link_maps: '',
   setuju: false,
 });
+
+const toNullableCoord = (value) => {
+  if (value === '' || value === null || value === undefined) return null;
+  const parsed = Number.parseFloat(value);
+  return Number.isFinite(parsed) ? parsed : null;
+};
+
+const isValidCoord = (lat, lng) => Number.isFinite(lat) && Number.isFinite(lng) && Math.abs(lat) <= 90 && Math.abs(lng) <= 180;
+
+// Membaca koordinat dari berbagai bentuk URL / teks Google Maps.
+// Contoh yang didukung:
+// - https://www.google.com/maps/@-6.49,106.83,15z
+// - https://maps.google.com/?q=-6.49,106.83
+// - https://www.google.com/maps/search/?api=1&query=-6.49,106.83
+// - https://www.google.com/maps/place/...!3d-6.49!4d106.83
+const parseGoogleMapsLink = (input) => {
+  const text = String(input || '').trim();
+  if (!text) return null;
+
+  const pick = (rawLat, rawLng) => {
+    const lat = Number.parseFloat(rawLat);
+    const lng = Number.parseFloat(rawLng);
+    return isValidCoord(lat, lng) ? { lat, lng } : null;
+  };
+
+  const pairRegex = /(-?\d{1,3}(?:\.\d+)?)\s*,\s*(-?\d{1,3}(?:\.\d+)?)/;
+
+  try {
+    const url = new URL(/^https?:\/\//i.test(text) ? text : `https://${text}`);
+    for (const key of ['q', 'query', 'll', 'destination', 'center', 'daddr', 'sll']) {
+      const value = url.searchParams.get(key);
+      if (!value) continue;
+      const match = value.match(pairRegex);
+      if (match) {
+        const picked = pick(match[1], match[2]);
+        if (picked) return picked;
+      }
+    }
+    const atMatch = text.match(/@(-?\d{1,3}(?:\.\d+)?),(-?\d{1,3}(?:\.\d+)?)/);
+    if (atMatch) {
+      const picked = pick(atMatch[1], atMatch[2]);
+      if (picked) return picked;
+    }
+  } catch {
+    // Bukan URL valid, lanjut ke pola teks.
+  }
+
+  const dataMatch = text.match(/!3d(-?\d{1,3}(?:\.\d+)?)!4d(-?\d{1,3}(?:\.\d+)?)/);
+  if (dataMatch) {
+    const picked = pick(dataMatch[1], dataMatch[2]);
+    if (picked) return picked;
+  }
+
+  const plainMatch = text.match(pairRegex);
+  if (plainMatch) {
+    const picked = pick(plainMatch[1], plainMatch[2]);
+    if (picked) return picked;
+  }
+
+  return null;
+};
+
+const toVisitLocation = (item) => {
+  const lat = toNullableCoord(item.lat);
+  const lng = toNullableCoord(item.lng);
+  if (!isValidCoord(lat, lng)) return null;
+  return {
+    id: `kunjungan-${item.id}`,
+    nama: item.instansi || item.nama_pemohon || 'Kunjungan Perpustakaan Keliling',
+    lat,
+    lng,
+    deskripsi: item.alamat_lokasi || 'Kunjungan Perpustakaan Keliling',
+    hari: item.tanggal_kunjungan ? NAMA_HARI[new Date(`${item.tanggal_kunjungan}T00:00:00`).getDay()] : '',
+    jam: item.jam_kunjungan || '',
+    isKunjungan: true,
+    tanggal_kunjungan: item.tanggal_kunjungan,
+    jumlah_peserta: item.jumlah_peserta,
+    keperluan: item.keperluan,
+  };
+};
 
 const AppLogo = ({ className = "w-10 h-10" }) => (
   <div className={`flex items-center justify-center rounded-2xl bg-white shadow-xl shadow-blue-500/20 border-2 border-white shrink-0 overflow-hidden transition-all duration-500 hover:scale-110 hover:-translate-y-1 ${className}`}>
@@ -111,6 +194,7 @@ export default function App() {
   const setCurrentPage = (page) => {
     localStorage.setItem('pusling_current_page', page);
     _setCurrentPage(page);
+    setIsMobileMenuOpen(false);
   };
 
   const [filterHari, setFilterHari] = useState('Semua Hari');
@@ -134,6 +218,7 @@ export default function App() {
   const [toastType, setToastType] = useState('info'); 
   const [confirmDialog, setConfirmDialog] = useState(null);
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
   const [selectedLokasi, setSelectedLokasi] = useState(null);
   const [routeInfo, setRouteInfo] = useState(null);
@@ -159,17 +244,22 @@ export default function App() {
   const [permohonanSuccess, setPermohonanSuccess] = useState(null);
   const [adminTab, setAdminTab] = useState('jadwal');
   const [permohonanFilter, setPermohonanFilter] = useState('semua');
+  const [isGeocoding, setIsGeocoding] = useState(false);
 
   const mapRef = useRef(null);
   const mapInstance = useRef(null);
   const markersRef = useRef([]);
   const routeLayerRef = useRef(null);
+  const previewMarkerRef = useRef(null);
   const adminMapRef = useRef(null);
   const adminMapInstance = useRef(null);
   const adminMarkersRef = useRef([]);
   const modalMapRef = useRef(null);
   const modalMapInstance = useRef(null);
   const modalMarkerRef = useRef(null);
+  const permohonanMapRef = useRef(null);
+  const permohonanMapInstance = useRef(null);
+  const permohonanMarkerRef = useRef(null);
 
   const showToast = (msg, type = 'info') => {
     setToastMsg(msg); setToastType(type); setTimeout(() => setToastMsg(null), 4000);
@@ -297,6 +387,10 @@ export default function App() {
   }, []);
 
   useEffect(() => {
+    if (currentPage === 'map' || currentPage === 'calendar') refreshPublicAgenda();
+  }, [currentPage]);
+
+  useEffect(() => {
     if (session) refreshPermohonanAdmin();
   }, [session]);
 
@@ -371,7 +465,12 @@ export default function App() {
     );
   };
 
-  const clearRouteState = () => { setSelectedLokasi(null); if (routeLayerRef.current && mapInstance.current) { mapInstance.current.removeLayer(routeLayerRef.current); routeLayerRef.current = null; } setRouteInfo(null); };
+  const clearRouteState = () => {
+    setSelectedLokasi(null);
+    if (routeLayerRef.current && mapInstance.current) { mapInstance.current.removeLayer(routeLayerRef.current); routeLayerRef.current = null; }
+    if (previewMarkerRef.current && mapInstance.current) { mapInstance.current.removeLayer(previewMarkerRef.current); previewMarkerRef.current = null; }
+    setRouteInfo(null);
+  };
 
   useEffect(() => { if (window.innerWidth < 1024) setIsSidebarOpen(false); }, []);
   useEffect(() => {
@@ -424,7 +523,26 @@ export default function App() {
       });
       markersRef.current.push(marker);
     });
-  }, [isLeafletLoaded, currentPage, lokasiData, filterHari]);
+
+    const visitIcon = L.divIcon({
+      className: 'custom-icon transition-transform hover:scale-110',
+      html: `<div style="background: linear-gradient(135deg, #f59e0b, #ef4444); color: white; border-radius: 50% 50% 50% 0; width: 32px; height: 32px; transform: rotate(-45deg); display: flex; justify-content: center; align-items: center; box-shadow: 0 4px 10px rgba(239, 68, 68, 0.4); border: 2.5px solid white;"><svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="transform: rotate(45deg);"><rect width="18" height="18" x="3" y="4" rx="2"/><path d="M3 10h18"/><path d="M8 2v4"/><path d="M16 2v4"/></svg></div>`,
+      iconSize: [32, 32], iconAnchor: [16, 32]
+    });
+
+    permohonanTerjadwal.forEach((item) => {
+      const visit = toVisitLocation(item);
+      if (!visit) return;
+      const marker = L.marker([visit.lat, visit.lng], { icon: visitIcon, zIndexOffset: 200 }).addTo(mapInstance.current)
+        .bindTooltip(`<div class="text-xs font-bold text-slate-700">${visit.nama}</div><div class="text-[10px] text-slate-500">Kunjungan ${formatTanggalID(visit.tanggal_kunjungan, { weekday: undefined })}</div>`, { direction: 'top', className: 'border-0 shadow-lg' })
+        .on('click', (e) => {
+          if (e.originalEvent) e.originalEvent.stopPropagation();
+          if (window.innerWidth < 1024) setIsSidebarOpen(false);
+          handleMarkerClick(visit);
+        });
+      markersRef.current.push(marker);
+    });
+  }, [isLeafletLoaded, currentPage, lokasiData, filterHari, permohonanTerjadwal]);
 
   const sortedLokasiData = [...lokasiData.filter(loc => filterHari === 'Semua Hari' || loc.hari === filterHari)].sort((a, b) => {
     const todayNum = dayOrderMap[getTodayName()] || 1;
@@ -437,6 +555,8 @@ export default function App() {
     const timeB = b.jam.split('-')[0].trim();
     return timeA.localeCompare(timeB);
   });
+
+  const approvedVisits = permohonanTerjadwal.map(toVisitLocation).filter(Boolean);
 
   useEffect(() => {
     if (!isLeafletLoaded || !adminMapRef.current || currentPage !== 'admin' || !session) return;
@@ -509,6 +629,68 @@ export default function App() {
     }
   }, [formData.lat, formData.lng]);
 
+  // --- PETA PEMILIH TITIK UNTUK PERMOHONAN KUNJUNGAN ---
+  const syncPermohonanMarker = (lat, lng) => {
+    const L = window.L;
+    if (!L || !permohonanMapInstance.current) return;
+    if (permohonanMarkerRef.current) {
+      permohonanMarkerRef.current.setLatLng([lat, lng]);
+      return;
+    }
+    const pinIcon = L.divIcon({
+      className: 'custom-icon cursor-move',
+      html: `<div style="background: linear-gradient(135deg, #159b47, #225faa); color: white; border-radius: 50% 50% 50% 0; width: 30px; height: 30px; transform: rotate(-45deg); display: flex; justify-content: center; align-items: center; box-shadow: 0 4px 10px rgba(21, 155, 71, 0.35); border: 2.5px solid white;"><svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="transform: rotate(45deg);"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="3"/></svg></div>`,
+      iconSize: [30, 30], iconAnchor: [15, 30]
+    });
+    permohonanMarkerRef.current = L.marker([lat, lng], { icon: pinIcon, draggable: true }).addTo(permohonanMapInstance.current);
+    permohonanMarkerRef.current.on('dragend', (event) => {
+      const point = event.target.getLatLng();
+      setPermohonanForm((prev) => ({ ...prev, lat: point.lat.toFixed(6), lng: point.lng.toFixed(6) }));
+    });
+  };
+
+  useEffect(() => {
+    if (currentPage !== 'permohonan' || !isLeafletLoaded || !permohonanMapRef.current) return;
+    const L = window.L;
+    const initialLat = parseFloat(permohonanForm.lat);
+    const initialLng = parseFloat(permohonanForm.lng);
+    const hasCoords = isValidCoord(initialLat, initialLng);
+    const center = hasCoords ? [initialLat, initialLng] : [PERPUSDA_BASE.lat, PERPUSDA_BASE.lng];
+
+    if (!permohonanMapInstance.current) {
+      permohonanMapInstance.current = L.map(permohonanMapRef.current, { scrollWheelZoom: false }).setView(center, hasCoords ? 15 : 11);
+      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution: '&copy; OpenStreetMap contributors' }).addTo(permohonanMapInstance.current);
+      const applyPoint = (lat, lng) => {
+        setPermohonanForm((prev) => ({ ...prev, lat: lat.toFixed(6), lng: lng.toFixed(6) }));
+        if (permohonanMapInstance.current) permohonanMapInstance.current.panTo([lat, lng]);
+      };
+      if (hasCoords) syncPermohonanMarker(initialLat, initialLng);
+      permohonanMapInstance.current.on('click', (event) => {
+        const point = event.latlng;
+        syncPermohonanMarker(point.lat, point.lng);
+        applyPoint(point.lat, point.lng);
+      });
+    }
+
+    setTimeout(() => { if (permohonanMapInstance.current) permohonanMapInstance.current.invalidateSize(); }, 300);
+  }, [currentPage, isLeafletLoaded, permohonanSuccess]);
+
+  useEffect(() => {
+    const lat = parseFloat(permohonanForm.lat);
+    const lng = parseFloat(permohonanForm.lng);
+    if (!isValidCoord(lat, lng)) return;
+    syncPermohonanMarker(lat, lng);
+  }, [permohonanForm.lat, permohonanForm.lng]);
+
+  // Hancurkan instance peta saat formulir diganti halaman sukses,
+  // supaya peta bisa dibuat ulang ketika pengguna membuka formulir lagi.
+  useEffect(() => {
+    if (!permohonanSuccess || !permohonanMapInstance.current) return;
+    permohonanMapInstance.current.remove();
+    permohonanMapInstance.current = null;
+    permohonanMarkerRef.current = null;
+  }, [permohonanSuccess]);
+
   const drawRoute = async (start, end) => {
     setIsLoadingRoute(true);
     try {
@@ -561,7 +743,22 @@ export default function App() {
   const openLocationOnMap = (loc) => {
     setSelectedLokasi(loc);
     setCurrentPage('map');
-    setTimeout(() => { if (mapInstance.current) handleMarkerClick(loc); }, 700);
+    setTimeout(() => {
+      if (!mapInstance.current) return;
+      handleMarkerClick(loc);
+      // Kunjungan pratinjau (mis. masih menunggu) belum punya marker publik,
+      // jadi tambahkan pin sementara agar titik lokasinya terlihat jelas.
+      if (loc.isKunjungan && !approvedVisits.some((visit) => visit.id === loc.id)) {
+        if (previewMarkerRef.current) mapInstance.current.removeLayer(previewMarkerRef.current);
+        const L = window.L;
+        const icon = L.divIcon({
+          className: 'custom-icon',
+          html: `<div style="background: linear-gradient(135deg, #f59e0b, #ef4444); color: white; border-radius: 50% 50% 50% 0; width: 32px; height: 32px; transform: rotate(-45deg); display: flex; justify-content: center; align-items: center; box-shadow: 0 4px 10px rgba(239, 68, 68, 0.4); border: 2.5px solid white;"><svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="transform: rotate(45deg);"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="3"/></svg></div>`,
+          iconSize: [32, 32], iconAnchor: [16, 32]
+        });
+        previewMarkerRef.current = L.marker([loc.lat, loc.lng], { icon, zIndexOffset: 300 }).addTo(mapInstance.current);
+      }
+    }, 700);
   };
 
   const getEventsForDate = (date) => {
@@ -588,6 +785,7 @@ export default function App() {
         description: item.keperluan || 'Kunjungan Perpustakaan Keliling',
         alamat: item.alamat_lokasi,
         peserta: item.jumlah_peserta,
+        loc: toVisitLocation(item) || undefined,
       }));
     return [...jadwalRutin, ...kunjungan].sort((a, b) => parseTimeMinutes(a.time) - parseTimeMinutes(b.time));
   };
@@ -609,6 +807,53 @@ export default function App() {
     setPermohonanForm((prev) => ({ ...prev, [name]: type === 'checkbox' ? checked : value }));
   };
 
+  const setPermohonanPoint = (lat, lng, zoom = 16) => {
+    setPermohonanForm((prev) => ({ ...prev, lat: lat.toFixed(6), lng: lng.toFixed(6) }));
+    if (permohonanMapInstance.current) permohonanMapInstance.current.setView([lat, lng], zoom);
+  };
+
+  const useMyLocationForPermohonan = () => {
+    if (!navigator.geolocation) { showToast('Geolokasi tidak didukung browser.', 'error'); return; }
+    setIsGeocoding(true);
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        setPermohonanPoint(pos.coords.latitude, pos.coords.longitude);
+        showToast('Titik lokasi Anda diterapkan.', 'success');
+        setIsGeocoding(false);
+      },
+      () => { showToast('Gagal mengambil lokasi. Tandai manual di peta.', 'error'); setIsGeocoding(false); },
+      { enableHighAccuracy: true }
+    );
+  };
+
+  const geocodePermohonanAddress = async () => {
+    const query = permohonanForm.alamat_lokasi.trim();
+    if (!query) { showToast('Isi alamat/lokasi terlebih dahulu.', 'error'); return; }
+    setIsGeocoding(true);
+    try {
+      const response = await fetch(`https://nominatim.openstreetmap.org/search?format=json&limit=1&countrycodes=id&q=${encodeURIComponent(query)}`);
+      const results = await response.json();
+      if (!Array.isArray(results) || results.length === 0) throw new Error('not found');
+      const found = results[0];
+      setPermohonanPoint(Number.parseFloat(found.lat), Number.parseFloat(found.lon));
+      showToast('Alamat ditemukan dan titik peta diperbarui.', 'success');
+    } catch {
+      showToast('Alamat tidak ditemukan. Coba tandai manual di peta.', 'error');
+    } finally {
+      setIsGeocoding(false);
+    }
+  };
+
+  const applyPermohonanMapsLink = () => {
+    const parsed = parseGoogleMapsLink(permohonanForm.link_maps);
+    if (!parsed) {
+      showToast('Koordinat tidak ditemukan pada link. Pastikan link Google Maps lengkap.', 'error');
+      return;
+    }
+    setPermohonanPoint(parsed.lat, parsed.lng);
+    showToast(`Koordinat diterapkan: ${parsed.lat.toFixed(6)}, ${parsed.lng.toFixed(6)}`, 'success');
+  };
+
   const handleSubmitPermohonan = async (e) => {
     e.preventDefault();
     if (!permohonanForm.setuju) { showToast('Centang pernyataan persetujuan terlebih dahulu.', 'error'); return; }
@@ -623,6 +868,8 @@ export default function App() {
       jam_kunjungan: permohonanForm.jam_kunjungan,
       jumlah_peserta: Number.parseInt(permohonanForm.jumlah_peserta, 10) || 1,
       keperluan: permohonanForm.keperluan.trim() || null,
+      lat: toNullableCoord(permohonanForm.lat),
+      lng: toNullableCoord(permohonanForm.lng),
       status: 'menunggu',
     };
     const localRecord = {
@@ -710,16 +957,16 @@ export default function App() {
 
       {/* NAVBAR */}
       {(currentPage === 'landing' || currentPage === 'map' || currentPage === 'calendar' || currentPage === 'permohonan') && (
-        <nav className="absolute top-0 left-0 right-0 z-[100] px-4 sm:px-6 py-4">
-          <div className="max-w-7xl mx-auto flex items-center justify-between bg-white/60 backdrop-blur-2xl border border-white/70 rounded-full px-4 sm:px-6 py-2.5 shadow-lg shadow-slate-200/40">
-            <button onClick={() => setCurrentPage('landing')} className="flex items-center gap-2.5">
+        <nav className="absolute top-0 left-0 right-0 z-[100] px-3 sm:px-6 py-3 sm:py-4">
+          <div className="max-w-7xl mx-auto flex items-center justify-between gap-2 bg-white/60 backdrop-blur-2xl border border-white/70 rounded-[1.5rem] sm:rounded-full px-3 sm:px-6 py-2 sm:py-2.5 shadow-lg shadow-slate-200/40">
+            <button onClick={() => setCurrentPage('landing')} className="flex items-center gap-2.5 min-w-0">
               <AppLogo className="w-9 h-9" />
-              <div className="hidden sm:block">
+              <div className="hidden sm:block text-left">
                 <p className="text-sm font-black text-slate-800 leading-tight">SIG Pusling</p>
                 <p className="text-[9px] font-bold text-slate-500 uppercase tracking-widest">Kab. Bogor</p>
               </div>
             </button>
-            <div className="flex items-center gap-1 sm:gap-2">
+            <div className="hidden sm:flex items-center gap-1 sm:gap-2">
               <button onClick={() => setCurrentPage('landing')} title="Beranda" className={`px-2.5 sm:px-4 py-2 rounded-full text-xs sm:text-sm font-bold transition-all flex items-center gap-1.5 ${currentPage === 'landing' ? 'bg-blue-500 text-white shadow-md shadow-blue-500/20' : 'text-slate-600 hover:bg-white/80'}`}><Home size={15}/> <span className="hidden sm:inline">Beranda</span></button>
               <button onClick={() => setCurrentPage('map')} title="Peta Pusling" className={`px-2.5 sm:px-4 py-2 rounded-full text-xs sm:text-sm font-bold transition-all flex items-center gap-1.5 ${currentPage === 'map' ? 'bg-blue-500 text-white shadow-md shadow-blue-500/20' : 'text-slate-600 hover:bg-white/80'}`}><Map size={15}/> <span className="hidden sm:inline">Peta</span></button>
               <button onClick={() => setCurrentPage('calendar')} title="Kalender Aktivitas" className={`px-2.5 sm:px-4 py-2 rounded-full text-xs sm:text-sm font-bold transition-all flex items-center gap-1.5 ${currentPage === 'calendar' ? 'bg-blue-500 text-white shadow-md shadow-blue-500/20' : 'text-slate-600 hover:bg-white/80'}`}><CalendarDays size={15}/> <span className="hidden sm:inline">Kalender</span></button>
@@ -727,7 +974,23 @@ export default function App() {
               <button onClick={goToKontak} title="Kontak Layanan" className="px-2.5 sm:px-4 py-2 rounded-full text-xs sm:text-sm font-bold text-slate-600 hover:bg-white/80 flex items-center gap-1.5"><Phone size={15}/> <span className="hidden sm:inline">Kontak</span></button>
               <button onClick={() => setCurrentPage('admin')} title={session ? 'Dashboard' : 'Login'} className="px-2.5 sm:px-4 py-2 rounded-full text-xs sm:text-sm font-bold text-slate-600 hover:bg-white/80 flex items-center gap-1.5"><LogIn size={15}/> <span className="hidden sm:inline">{session ? 'Dashboard' : 'Login'}</span></button>
             </div>
+            <button onClick={() => setIsMobileMenuOpen((open) => !open)} className="sm:hidden bg-white/70 border border-white text-slate-700 p-2.5 rounded-xl shadow-sm active:scale-95 transition-all" title="Menu" aria-label="Buka menu navigasi">
+              {isMobileMenuOpen ? <X size={20} /> : <Menu size={20} />}
+            </button>
           </div>
+
+          {isMobileMenuOpen && (
+            <div className="sm:hidden max-w-7xl mx-auto mt-2 bg-white/95 backdrop-blur-2xl border border-white rounded-[1.5rem] p-2 shadow-2xl shadow-slate-300/40">
+              <div className="grid grid-cols-2 gap-1.5">
+                <button onClick={() => setCurrentPage('landing')} className={`flex items-center gap-2 px-3 py-3 rounded-xl text-xs font-bold transition-all ${currentPage === 'landing' ? 'bg-blue-500 text-white shadow-md shadow-blue-500/20' : 'text-slate-600 bg-slate-50/70 hover:bg-white'}`}><Home size={16}/> Beranda</button>
+                <button onClick={() => setCurrentPage('map')} className={`flex items-center gap-2 px-3 py-3 rounded-xl text-xs font-bold transition-all ${currentPage === 'map' ? 'bg-blue-500 text-white shadow-md shadow-blue-500/20' : 'text-slate-600 bg-slate-50/70 hover:bg-white'}`}><Map size={16}/> Peta Pusling</button>
+                <button onClick={() => setCurrentPage('calendar')} className={`flex items-center gap-2 px-3 py-3 rounded-xl text-xs font-bold transition-all ${currentPage === 'calendar' ? 'bg-blue-500 text-white shadow-md shadow-blue-500/20' : 'text-slate-600 bg-slate-50/70 hover:bg-white'}`}><CalendarDays size={16}/> Kalender</button>
+                <button onClick={() => setCurrentPage('permohonan')} className={`flex items-center gap-2 px-3 py-3 rounded-xl text-xs font-bold transition-all ${currentPage === 'permohonan' ? 'bg-blue-500 text-white shadow-md shadow-blue-500/20' : 'text-slate-600 bg-slate-50/70 hover:bg-white'}`}><Send size={16}/> Permohonan</button>
+                <button onClick={goToKontak} className="flex items-center gap-2 px-3 py-3 rounded-xl text-xs font-bold text-slate-600 bg-slate-50/70 hover:bg-white transition-all"><Phone size={16}/> Kontak Layanan</button>
+                <button onClick={() => setCurrentPage('admin')} className="flex items-center gap-2 px-3 py-3 rounded-xl text-xs font-bold text-slate-600 bg-slate-50/70 hover:bg-white transition-all"><LogIn size={16}/> {session ? 'Dashboard' : 'Login Admin'}</button>
+              </div>
+            </div>
+          )}
         </nav>
       )}
 
@@ -735,7 +998,7 @@ export default function App() {
       {/* 1. LANDING PAGE                          */}
       {/* ========================================= */}
       <div className={`flex-1 min-h-0 flex-col overflow-y-auto scroll-smooth ${currentPage === 'landing' ? 'flex' : 'hidden'}`}>
-        <section className="min-h-[100dvh] relative flex flex-col items-center justify-center p-6 overflow-hidden bg-slate-50">
+        <section className="shrink-0 min-h-[100dvh] relative flex flex-col items-center justify-center p-6 overflow-hidden bg-slate-50">
           <div className="absolute inset-0 overflow-hidden pointer-events-none">
             <div className="absolute -top-[20%] -left-[10%] w-[60vw] h-[60vw] rounded-full bg-blue-200/40 blur-[120px] mix-blend-multiply opacity-70 animate-pulse"></div>
             <div className="absolute top-[30%] -right-[10%] w-[50vw] h-[50vw] rounded-full bg-teal-200/40 blur-[100px] mix-blend-multiply opacity-60"></div>
@@ -923,11 +1186,11 @@ export default function App() {
           <main className="flex flex-1 relative w-full h-full">
             <div id="map-container" ref={mapRef} className="absolute inset-0 z-0"></div>
 
-            {isSidebarOpen && <div className="absolute inset-0 bg-slate-900/10 backdrop-blur-[2px] z-[40] lg:hidden" onClick={() => setIsSidebarOpen(false)} />}
+            {isSidebarOpen && <div className="fixed inset-0 bg-slate-900/20 backdrop-blur-[2px] z-[110] lg:hidden" onClick={() => setIsSidebarOpen(false)} />}
 
-            <aside className={`absolute top-0 left-0 z-[50] h-[100dvh] lg:h-[calc(100dvh-5rem)] lg:top-20 lg:bottom-4 lg:left-4 flex flex-col transition-transform duration-700 ease-[cubic-bezier(0.25,0.8,0.25,1)] ${isSidebarOpen ? 'translate-x-0' : '-translate-x-[110%] lg:-translate-x-[120%]'} w-[85vw] sm:w-[380px]`}>
+            <aside className={`fixed top-0 bottom-0 left-0 z-[120] lg:absolute lg:z-[50] lg:bottom-4 lg:left-4 flex flex-col transition-transform duration-700 ease-[cubic-bezier(0.25,0.8,0.25,1)] ${isSidebarOpen ? 'translate-x-0' : '-translate-x-[110%] lg:-translate-x-[120%]'} w-[85vw] sm:w-[380px]`}>
               <div className="bg-white/40 backdrop-blur-2xl lg:rounded-[2rem] shadow-[0_8px_32px_rgba(0,0,0,0.12)] border-r lg:border border-white/60 h-full flex flex-col overflow-hidden">
-                <div className="bg-gradient-to-br from-blue-500/90 to-teal-400/90 backdrop-blur-xl p-6 lg:rounded-t-[2rem] shrink-0 relative overflow-hidden border-b border-white/20">
+                <div className="bg-gradient-to-br from-blue-500/90 to-teal-400/90 backdrop-blur-xl p-4 sm:p-6 lg:rounded-t-[2rem] shrink-0 relative overflow-hidden border-b border-white/20 pt-[max(1rem,env(safe-area-inset-top))] lg:pt-6">
                   <div className="absolute top-0 right-0 w-40 h-40 bg-white/20 rounded-full blur-3xl -translate-y-10 translate-x-10"></div>
                   <div className="relative flex items-center justify-between">
                     <div className="flex items-center gap-4">
@@ -952,10 +1215,10 @@ export default function App() {
                   </select>
                 </div>
 
-                <div className="flex-1 overflow-y-auto p-4 scrollbar-thin scrollbar-thumb-white/50 pb-20 lg:pb-4">
+                <div className="flex-1 overflow-y-auto p-4 pb-6 scrollbar-thin scrollbar-thumb-white/50">
                   <div className="px-1 mb-4 flex justify-between items-center">
                     <h3 className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Daftar Titik Lokasi</h3>
-                    <span className="bg-blue-500/10 text-blue-700 border border-blue-200/50 text-[10px] font-bold px-2.5 py-0.5 rounded-full backdrop-blur-sm">{sortedLokasiData.length + 1} Titik</span>
+                    <span className="bg-blue-500/10 text-blue-700 border border-blue-200/50 text-[10px] font-bold px-2.5 py-0.5 rounded-full backdrop-blur-sm">{sortedLokasiData.length + 1 + approvedVisits.length} Titik</span>
                   </div>
 
                   <div className="space-y-3">
@@ -982,6 +1245,31 @@ export default function App() {
                           );
                         })}
                       </>
+                    )}
+
+                    {approvedVisits.length > 0 && (
+                      <div className="pt-2">
+                        <div className="px-1 mt-3 mb-3 flex justify-between items-center">
+                          <h3 className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Kunjungan Disetujui</h3>
+                          <span className="bg-amber-500/15 text-amber-700 border border-amber-300/50 text-[10px] font-bold px-2.5 py-0.5 rounded-full backdrop-blur-sm">{approvedVisits.length} Kunjungan</span>
+                        </div>
+                        <div className="space-y-3">
+                          {approvedVisits.map((visit) => (
+                            <div key={visit.id} onClick={() => { if (window.innerWidth < 1024) setIsSidebarOpen(false); handleMarkerClick(visit); }} className={`relative p-4 rounded-[1.25rem] border-2 cursor-pointer transition-all duration-500 group overflow-hidden ${selectedLokasi?.id === visit.id ? 'border-amber-400 bg-amber-50/90 backdrop-blur-md shadow-md shadow-amber-500/10' : 'border-white/50 bg-white/30 backdrop-blur-md shadow-sm hover:bg-white/70 hover:shadow-lg'}`}>
+                              <div className="flex items-center gap-2.5 mb-3">
+                                <div className="bg-gradient-to-br from-amber-400 to-rose-400 p-2 rounded-xl text-white shadow-sm shrink-0"><CalendarDays size={15} /></div>
+                                <h4 className="font-bold text-sm text-slate-800 group-hover:text-amber-700 transition-colors leading-snug">{visit.nama}</h4>
+                              </div>
+                              <div className="flex flex-wrap gap-2">
+                                <span className="flex items-center gap-1.5 bg-white/60 border border-white/70 text-slate-700 px-2.5 py-1 rounded-lg text-[11px] font-bold group-hover:bg-white"><CalendarDays size={12} className="text-amber-500"/> {formatTanggalID(visit.tanggal_kunjungan, { weekday: undefined })}</span>
+                                <span className="flex items-center gap-1.5 bg-white/60 border border-white/70 text-slate-700 px-2.5 py-1 rounded-lg text-[11px] font-bold group-hover:bg-white"><Clock size={12} className="text-rose-500"/> {visit.jam}</span>
+                                <span className="flex items-center gap-1.5 bg-white/60 border border-white/70 text-slate-700 px-2.5 py-1 rounded-lg text-[11px] font-bold group-hover:bg-white"><Users size={12} className="text-blue-500"/> {visit.jumlah_peserta} peserta</span>
+                              </div>
+                              <p className="text-[11px] font-medium text-slate-500 mt-2.5 line-clamp-2">{visit.deskripsi}</p>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
                     )}
                   </div>
                 </div>
@@ -1013,6 +1301,23 @@ export default function App() {
                   <button onClick={clearRouteState} className="absolute top-5 right-5 sm:top-6 sm:right-6 bg-white/50 border border-white p-2 rounded-full text-slate-500 hover:text-slate-800 hover:bg-white hover:scale-110 transition-all"><X size={16}/></button>
                 </div>
                 <p className="text-slate-600 text-xs sm:text-sm mb-5 sm:mb-6 leading-relaxed font-medium">{selectedLokasi.deskripsi}</p>
+
+                {selectedLokasi.isKunjungan && (
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 mb-4">
+                    <div className="bg-amber-50/80 border border-amber-200/70 rounded-xl px-3 py-2.5">
+                      <span className="text-[9px] font-black uppercase tracking-widest text-amber-600 flex items-center gap-1"><CalendarDays size={11} /> Tanggal</span>
+                      <p className="text-[11px] font-bold text-slate-700 mt-0.5">{formatTanggalID(selectedLokasi.tanggal_kunjungan, { weekday: undefined })}</p>
+                    </div>
+                    <div className="bg-rose-50/80 border border-rose-200/70 rounded-xl px-3 py-2.5">
+                      <span className="text-[9px] font-black uppercase tracking-widest text-rose-600 flex items-center gap-1"><Clock size={11} /> Jam</span>
+                      <p className="text-[11px] font-bold text-slate-700 mt-0.5">{selectedLokasi.jam || '-'} WIB</p>
+                    </div>
+                    <div className="bg-blue-50/80 border border-blue-200/70 rounded-xl px-3 py-2.5">
+                      <span className="text-[9px] font-black uppercase tracking-widest text-blue-600 flex items-center gap-1"><Users size={11} /> Peserta</span>
+                      <p className="text-[11px] font-bold text-slate-700 mt-0.5">{selectedLokasi.jumlah_peserta} orang</p>
+                    </div>
+                  </div>
+                )}
                 
                 <div className="bg-slate-50/50 backdrop-blur-md rounded-[1.25rem] p-4 sm:p-5 flex flex-col gap-4 border border-white/60 shadow-inner">
                   <div className="flex flex-row gap-4">
@@ -1248,6 +1553,52 @@ export default function App() {
                     <div>
                       <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 ml-1">Alamat / Lokasi Kunjungan</label>
                       <textarea required name="alamat_lokasi" value={permohonanForm.alamat_lokasi} onChange={handlePermohonanChange} rows="3" className="w-full bg-white border border-slate-200 rounded-[1.25rem] p-3.5 sm:p-4 text-sm font-medium outline-none focus:border-blue-400 focus:ring-4 focus:ring-blue-500/10 transition-all shadow-sm resize-none" placeholder="Nama sekolah/instansi, alamat lengkap, patokan lokasi..." />
+                    </div>
+
+                    <div className="bg-slate-50/80 border border-slate-200 rounded-[1.5rem] p-4 sm:p-5 space-y-4">
+                      <div className="flex items-start justify-between gap-3">
+                        <div>
+                          <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest flex items-center gap-1.5"><MapPinned size={13} className="text-teal-500" /> Titik Koordinat Kunjungan</p>
+                          <p className="text-[11px] text-slate-400 font-semibold mt-1 leading-relaxed">Klik atau geser pin pada peta. Titik ini yang akan tampil di peta publik setelah permohonan disetujui.</p>
+                        </div>
+                        <span className="shrink-0 text-[9px] font-black uppercase tracking-widest px-2.5 py-1 rounded-full border border-teal-200 bg-teal-50 text-teal-700">OSM</span>
+                      </div>
+
+                      <div className="relative rounded-[1.25rem] overflow-hidden border border-white shadow-inner bg-slate-200">
+                        <div ref={permohonanMapRef} className="h-52 sm:h-64 w-full z-0"></div>
+                        <div className="pointer-events-none absolute top-3 left-3 bg-white/90 backdrop-blur-md border border-white rounded-xl px-3 py-1.5 text-[10px] font-bold text-slate-600 shadow-md">
+                          {isValidCoord(parseFloat(permohonanForm.lat), parseFloat(permohonanForm.lng))
+                            ? `${parseFloat(permohonanForm.lat).toFixed(6)}, ${parseFloat(permohonanForm.lng).toFixed(6)}`
+                            : 'Belum ada titik dipilih'}
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-2.5">
+                        <button type="button" onClick={useMyLocationForPermohonan} disabled={isGeocoding} className="flex items-center justify-center gap-2 bg-white hover:bg-blue-50 text-blue-700 border border-blue-200 px-3 py-2.5 rounded-xl text-[11px] font-bold transition-all disabled:opacity-60">
+                          <LocateFixed size={14} /> Lokasi Saya
+                        </button>
+                        <button type="button" onClick={geocodePermohonanAddress} disabled={isGeocoding} className="flex items-center justify-center gap-2 bg-white hover:bg-teal-50 text-teal-700 border border-teal-200 px-3 py-2.5 rounded-xl text-[11px] font-bold transition-all disabled:opacity-60">
+                          {isGeocoding ? <Loader2 size={14} className="animate-spin" /> : <Search size={14} />} Cari dari Alamat
+                        </button>
+                      </div>
+
+                      <div>
+                        <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 ml-1">Opsional: Tempel Link Google Maps</label>
+                        <div className="flex flex-col sm:flex-row gap-2.5">
+                          <input type="text" name="link_maps" value={permohonanForm.link_maps} onChange={handlePermohonanChange} className="flex-1 min-w-0 bg-white border border-slate-200 rounded-xl p-3 text-[11px] sm:text-xs font-medium outline-none focus:border-blue-400 focus:ring-4 focus:ring-blue-500/10 transition-all shadow-sm" placeholder="https://maps.google.com/?q=-6.49,106.83" />
+                          <button type="button" onClick={applyPermohonanMapsLink} className="shrink-0 flex items-center justify-center gap-2 bg-slate-800 hover:bg-slate-900 text-white px-4 py-3 rounded-xl text-[11px] font-bold transition-all">
+                            <Link2 size={14} /> Terapkan
+                          </button>
+                        </div>
+                        <p className="text-[10px] text-slate-400 font-semibold mt-2 ml-1 leading-relaxed">Link pendek (maps.app.goo.gl) tidak dapat dibaca. Buka link tersebut lalu salin URL lengkap yang memuat koordinat.</p>
+                      </div>
+
+                      {!isValidCoord(parseFloat(permohonanForm.lat), parseFloat(permohonanForm.lng)) && (
+                        <div className="flex items-start gap-2.5 bg-amber-50 border border-amber-200 text-amber-800 rounded-xl p-3">
+                          <AlertCircle size={15} className="shrink-0 mt-0.5" />
+                          <span className="text-[10px] sm:text-[11px] font-semibold leading-relaxed">Tanpa titik koordinat, permohonan tetap bisa dikirim tetapi tidak akan muncul sebagai titik di peta publik.</span>
+                        </div>
+                      )}
                     </div>
 
                     <div className="grid sm:grid-cols-3 gap-4">
@@ -1555,6 +1906,14 @@ export default function App() {
                                   <span className="flex items-center gap-2"><Users size={13} className="text-indigo-500 shrink-0" /> {item.jumlah_peserta} peserta</span>
                                   <span className="flex items-center gap-2 min-w-0"><Phone size={13} className="text-amber-500 shrink-0" /> <span className="truncate">{item.kontak}</span></span>
                                   <span className="flex items-start gap-2 sm:col-span-2"><MapPin size={13} className="text-rose-500 shrink-0 mt-0.5" /> <span>{item.alamat_lokasi}</span></span>
+                                  {isValidCoord(toNullableCoord(item.lat), toNullableCoord(item.lng)) ? (
+                                    <span className="flex flex-wrap items-center gap-2 sm:col-span-2">
+                                      <span className="flex items-center gap-2 text-[11px] sm:text-xs font-bold text-slate-500"><MapPinned size={13} className="text-teal-500 shrink-0" /> {Number(item.lat).toFixed(5)}, {Number(item.lng).toFixed(5)}</span>
+                                      <button type="button" onClick={() => { const visit = toVisitLocation(item); if (visit) openLocationOnMap(visit); }} className="text-[10px] font-bold text-teal-700 bg-teal-50 hover:bg-teal-500 hover:text-white border border-teal-200 px-2.5 py-1 rounded-lg transition-all flex items-center gap-1"><ExternalLink size={11} /> Lihat di Peta</button>
+                                    </span>
+                                  ) : (
+                                    <span className="flex items-center gap-2 sm:col-span-2 text-[11px] sm:text-xs font-semibold text-amber-600"><AlertCircle size={13} className="shrink-0" /> Titik koordinat belum diisi — tidak tampil di peta publik</span>
+                                  )}
                                 </div>
 
                                 {item.keperluan && (
